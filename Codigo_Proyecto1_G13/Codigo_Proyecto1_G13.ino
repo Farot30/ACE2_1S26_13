@@ -20,6 +20,12 @@
 #define PIN_servoEntrada 5
 #define PIN_servoSalida 6
 
+
+int leds[2][3] = {
+  {9, 10, 11},  //LED 0
+  {6, 5, 3}     //LED 1
+};
+
 #define LED1 8
 #define LED2 4
 #define LED3 7
@@ -53,6 +59,13 @@ void setup() {
   //pinMode(INFRA3, INPUT);
   //pinMode(INFRA4, INPUT);
   //pinMode(INFRA5, INPUT);
+
+  for(int i = 0; i < 2; i++) {
+    for(int j = 0; j < 3; j++) {
+      pinMode(leds[i][j], OUTPUT);
+    }
+  }
+
   pinMode(LED1, OUTPUT);
   pinMode(LED2, OUTPUT);
   pinMode(LED3, OUTPUT);
@@ -70,14 +83,14 @@ void loop() {
   ocupados = 0;
 
   if (digitalRead(INFRA1) == LOW) {
-    digitalWrite(LED1, HIGH);
+    setColor(0, 0, 255, 0);
     ocupados++;
-  } else digitalWrite(LED1, LOW);
+  } else setColor(0, 255, 0, 0);
 
   if (digitalRead(INFRA2) == LOW) {
-    digitalWrite(LED2, HIGH);
+    setColor(1, 0, 255, 0);
     ocupados++;
-  } else digitalWrite(LED2, LOW);
+  } else setColor(1, 255, 0, 0);
 
   /*if (digitalRead(INFRA3) == LOW) {
     digitalWrite(LED3, HIGH);
@@ -161,6 +174,12 @@ void loop() {
   }
   delay(200);
 
+}
+
+void setColor(int ledNumero, int r, int g, int b){
+    analogWrite(leds[ledNumero][0], r);
+    analogWrite(leds[ledNumero][1], g);
+    analogWrite(leds[ledNumero][2], b);
 }
 
 

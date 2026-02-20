@@ -143,28 +143,36 @@ void loop() {
     }
 
     if(comprobacion(lectura, tarjeta)){
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Acceso concedido");
-      lcd.setCursor(3, 1);
-      lcd.print("Bienvenido");
-      delay(500);
+      if(libres > 0){
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Acceso concedido");
+        lcd.setCursor(3, 1);
+        lcd.print("Bienvenido");
+        delay(500);
 
-      servoEntrada.write(90);
-      digitalWrite(LED3, HIGH);
-      delay(5000);
-      servoEntrada.write(0);
-      digitalWrite(LED3, LOW);
-      lcd.clear();
+        servoEntrada.write(90);
+        digitalWrite(LED3, HIGH);
+        delay(5000);
+        servoEntrada.write(0);
+        digitalWrite(LED3, LOW);
+        lcd.clear();
 
-      ultimo = -1;
+        ultimo = -1;
+      } else{
+          lcd.clear();
+          lcd.setCursor(0,0);
+          lcd.print("Parqueo lleno");
+          delay(1500);
+          lcd.clear();
+          ultimo = -1;
+      }
 
     } else{
         lcd.clear();
         lcd.setCursor(0, 0);
-        lcd.print("Acceso denegado");
+        lcd.print("Tarjeta invalida");
         delay(1500);
-        lcd.clear();
 
         ultimo = -1;
     }

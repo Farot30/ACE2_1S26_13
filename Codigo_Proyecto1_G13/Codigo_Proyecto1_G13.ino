@@ -12,6 +12,25 @@
         de los pines.
 */
 
+// MQ2 
+#define MQ2 A0
+
+// BUZZER
+#define BUZZER 8
+
+// RELÉ
+#define VENTILADOR 9
+
+//Umbrales para el MQ2
+#define UMBRAL_ADVERTENCIA 300
+#define UMBRAL_PELIGRO 500
+#define UMBRAL_CRITICO 700
+
+int ocupados = 0;
+bool emergenciaActiva = false;
+unsigned long tiempoEmergencia = 0;
+int ultimo = -1;
+
 #define INFRA1 2
 #define INFRA2 3
 //#define INFRA3 4
@@ -19,6 +38,7 @@
 //#define INFRA5 7
 #define PIN_servoEntrada 5
 #define PIN_servoSalida 6
+
 
 
 int leds[2][3] = {
@@ -43,8 +63,6 @@ LiquidCrystal_I2C lcd(0x27,16,2);
 byte lectura[4];
 byte tarjeta[4] = {0xB9, 0x1E, 0x19, 0xB4};
 MFRC522 Mlector(SS, RST);
-
-int ocupados = 0;
 
 void setup() {
   lcd.init(); 
@@ -77,10 +95,19 @@ void setup() {
   servoEntrada.write(0);
   servoSalida.write(0);
 
+  pinMode(MQ2, INPUT);
+  pinMode(BUZZER, OUTPUT);
+  pinMode(VENTILADOR, OUTPUT);
+
+  digitalWrite(BUZZER, LOW);
+  digitalWrite(VENTILADOR, LOW);
+
 }
 
 void loop() {
   ocupados = 0;
+
+  verificarGas();
 
   if (digitalRead(INFRA1) == LOW) {
     setColor(0, 0, 255, 0);
@@ -198,4 +225,116 @@ boolean comprobacion(byte lectura[], byte tarjeta[]){
     }
   }
   return true;
+}
+
+
+void verificarGas() {
+  int nivelGas = analogRead(MQ2);
+  
+  // NIVEL NORMAL (< 300)
+  if (nivelGas < UMBRAL_ADVERTENCIA) {
+    if (emergenciaActiva) {
+      // Restaurar operación normal
+      emergenciaActiva = false;
+      digitalWrite(BUZZER, LOW);
+      digitalWrite(VENTILADOR, LOW);
+      lcd.clear();
+      ultimo = -1;  // Forzar actualización de pantalla
+    }
+  }
+  
+  // NIVEL DE ADVERTENCIA (300-499)
+  else if (nivelGas >= UMBRAL_ADVERTENCIA && nivelGas < UMBRAL_PELIGRO) {
+    digitalWrite(VENTILADOR, HIGH);  // Activar ventilador
+    
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("ADVERTENCIA GAS");
+    lcd.setCursor(0, 1);
+    lcd.print("Nivel: ");
+    lcd.print(nivelGas);
+    
+    // Buzzer intermitente lento
+    static unsigned long lastBeep = 0;
+    if (millis() - lastBeep > 1000) {
+      digitalWrite(BUZZER, !digitalRead(BUZZER));
+      lastBeep = millis();
+    }
+  }
+  
+  // NIVEL DE PELIGRO (500-699)
+  else if (nivelGas >= UMBRAL_PELIGRO && nivelGas < UMBRAL_CRITICO) {
+    emergenciaActiva = true;
+    digitalWrite(VENTILADOR, HIGH);
+    
+    // Abrir barreras para evacuación
+    servoEntrada.write(90);
+    servoSalida.write(90);
+    
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("!! PELIGRO !!");
+    lcd.setCursor(0, 1);
+    lcd.print("EVACUAR AREA");
+    
+    // Buzzer intermitente rápido
+    static unsigned long lastBeep = 0;
+    if (millis() - lastBeep > 500) {
+      digitalWrite(BUZZER, !digitalRead(BUZZER));
+      lastBeep = millis();
+    }
+    
+    // Parpadear todos los LEDs en rojo
+    parpadearLEDsEmergencia();
+  }
+  
+  // NIVEL CRÍTICO (>= 700)
+  else if (nivelGas >= UMBRAL_CRITICO) {
+    emergenciaActiva = true;
+    digitalWrite(VENTILADOR, HIGH);
+    
+    // Mantener barreras abiertas
+    servoEntrada.write(90);
+    servoSalida.write(90);
+    
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("!!!CRITICO!!!");
+    lcd.setCursor(0, 1);
+    lcd.print("Gas: ");
+    lcd.print(nivelGas);
+    
+    // Buzzer continuo con pulsos muy rápidos
+    static unsigned long lastBeep = 0;
+    if (millis() - lastBeep > 200) {
+      digitalWrite(BUZZER, !digitalRead(BUZZER));
+      lastBeep = millis();
+    }
+    
+    // Todos los LEDs en rojo parpadeando rápido
+    parpadearLEDsEmergencia();
+  }
+}
+
+void parpadearLEDsEmergencia() {
+  static unsigned long lastBlink = 0;
+  static bool estadoLED = false;
+  
+  if (millis() - lastBlink > 300) {
+    estadoLED = !estadoLED;
+    
+    // Todos los LEDs RGB en rojo parpadeante
+    for(int i = 0; i < 2; i++) {
+      if (estadoLED) {
+        setColor(i, 255, 0, 0);  // Rojo
+      } else {
+        setColor(i, 0, 0, 0);    // Apagado
+      }
+    }
+    
+    // LED3 también parpadea
+    digitalWrite(LED3, estadoLED);
+    
+    lastBlink = millis();
+  }
 }

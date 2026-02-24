@@ -19,7 +19,7 @@ int ocupados = 0;
 volatile bool emergenciaActiva = false;
 int ultimo = -1;
 
-// ---- CONTROL DE ESTADOS ----
+//CONTROL DE ESTADOS
 enum Estado {
   NORMAL,
   MOSTRANDO_MENSAJE,
@@ -30,11 +30,11 @@ enum Estado {
 
 Estado estadoActual = NORMAL;
 
-// ---- CONTROL TIEMPOS ----
+//CONTROL TIEMPOS
 unsigned long tiempoEstado = 0;
 unsigned long tiempoServo = 0;
 
-// ---- CONTROL SERVO ----
+//CONTROL SERVO
 int anguloServo = 0;
 
 unsigned long lastBeep = 0;
@@ -156,7 +156,7 @@ void loop() {
     switch (estadoActual) {
       case NORMAL: Serial.println("NORMAL"); break;
       case MOSTRANDO_MENSAJE: Serial.println("MOSTRANDO_MENSAJE"); break;
-      // Agrega los demás
+      //Agrega los demás
     }
   }
 
@@ -164,7 +164,7 @@ void loop() {
 
 ocupados = 0;
 
-// Solo actualiza LEDs por ocupación si NO hay emergencia
+//Solo actualiza LEDs por ocupación si NO hay emergencia
 if (!emergenciaActiva) {
   if (digitalRead(INFRA1) == LOW) {
     setColor(0, HIGH, LOW);
@@ -226,11 +226,11 @@ if (!emergenciaActiva) {
 
   btnSalida();
 
-  // ---- MAQUINA DE ESTADOS ----
+  //MAQUINA DE ESTADOS
   switch(estadoActual){
 
     case MOSTRANDO_MENSAJE:
-      if(millis() - tiempoEstado >= 1000){   // mostrar 1 segundo
+      if(millis() - tiempoEstado >= 1000){   //mostrar 1 segundo
           estadoActual = ABRIENDO_SERVO;
           tiempoServo = millis();
           anguloServo = 0;
@@ -275,7 +275,7 @@ if (!emergenciaActiva) {
 
           if(anguloServo <= 0){
               estadoActual = NORMAL;
-              ultimo = -1;  // forzar actualización LCD
+              ultimo = -1;  //forzar actualización LCD
           }
       }
     break;
@@ -289,43 +289,45 @@ if (!emergenciaActiva) {
       return;
   }
 
-  if(Mlector.PICC_IsNewCardPresent() && Mlector.PICC_ReadCardSerial()){
-    for(byte i=0; i<Mlector.uid.size; i++){
-      lectura[i] = Mlector.uid.uidByte[i];
-    }
+  if (!emergenciaActiva) {
+    if(Mlector.PICC_IsNewCardPresent() && Mlector.PICC_ReadCardSerial()){
+      for(byte i=0; i<Mlector.uid.size; i++){
+        lectura[i] = Mlector.uid.uidByte[i];
+      }
 
-    if(comprobacion(lectura, tarjeta)){
-      if(libres > 0){
+      if(comprobacion(lectura, tarjeta)){
+        if(libres > 0){
 
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print("Acceso concedido");
-        lcd.setCursor(3, 1);
-        lcd.print("Bienvenido");
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print("Acceso concedido");
+          lcd.setCursor(3, 1);
+          lcd.print("Bienvenido");
 
-        estadoActual = MOSTRANDO_MENSAJE;
-        tiempoEstado = millis();
+          estadoActual = MOSTRANDO_MENSAJE;
+          tiempoEstado = millis();
+
+        } else{
+            lcd.clear();
+            lcd.setCursor(0,0);
+            lcd.print("Parqueo lleno");
+            delay(1500);
+            lcd.clear();
+            ultimo = -1;
+        }
 
       } else{
           lcd.clear();
-          lcd.setCursor(0,0);
-          lcd.print("Parqueo lleno");
+          lcd.setCursor(0, 0);
+          lcd.print("Tarjeta invalida");
           delay(1500);
-          lcd.clear();
+
           ultimo = -1;
       }
 
-    } else{
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print("Tarjeta invalida");
-        delay(1500);
-
-        ultimo = -1;
+      Mlector.PICC_HaltA();  //usamos esta función para finalizar la lectura del RFID
+      Mlector.PCD_StopCrypto1();
     }
-
-    Mlector.PICC_HaltA();  //usamos esta función para finalizar la lectura del RFID
-    Mlector.PCD_StopCrypto1();
   }
 }
 
@@ -347,11 +349,11 @@ boolean comprobacion(byte lectura[], byte tarjeta[]){
 
 void activarEmergencia() {
 
-  // Variables estáticas para recordar estado
+  //Variables estáticas para recordar estado
   static bool emergenciaEnCurso = false;
-  static unsigned long ultimoParpadeo = 0;  // si quieres mover lastBlink aquí
+  static unsigned long ultimoParpadeo = 0;  
 
-  // Si recién se activó la flag (primera vez)
+  //Si recién se activó la flag (primera vez)
   if (emergenciaActiva && !emergenciaEnCurso) {
     digitalWrite(VENTILADOR, HIGH);
     servoEntrada.write(90);
@@ -364,47 +366,47 @@ void activarEmergencia() {
     lcd.print("EVACUAR AREA");
 
     emergenciaEnCurso = true;
-    lastBeep = millis();  // resetear para buzzer
-    ultimoParpadeo = millis();  // si usas otro nombre para blink
+    lastBeep = millis();  //resetear para buzzer
+    ultimoParpadeo = millis();  
   }
 
-  // Si estamos en emergencia (cada loop)
+  //Si estamos en emergencia (cada loop)
   if (emergenciaActiva) {
 
-    static int tonoActual = 500;          // Hz inicial (bajo)
+    static int tonoActual = 500;          //Hz inicial (bajo)
     static bool subiendo = true;
 
-    if (millis() - lastBeep >= 8) {       // cada 8 ms para que suene fluido
+    if (millis() - lastBeep >= 8) {       //cada 8 ms para que suene fluido
       lastBeep = millis();
 
-      tone(BUZZER, tonoActual);           // genera el tono
+      tone(BUZZER, tonoActual);           //genera el tono
 
       if (subiendo) {
-        tonoActual += 6;                  // sube rápido
+        tonoActual += 6;                  //sube rápido
         if (tonoActual >= 1400) subiendo = false;
       } else {
-        tonoActual -= 6;                  // baja rápido
+        tonoActual -= 6;                  //baja rápido
         if (tonoActual <= 500) subiendo = true;
       }
     }
     
 
-    // LEDs parpadeo (usa tu función o mueve la lógica aquí)
+    //LEDs parpadeo (usa tu función o mueve la lógica aquí)
     if (millis() - ultimoParpadeo > 300) {
       static bool estadoLED = false;
       estadoLED = !estadoLED;
       for(int i = 0; i < 5; i++) {
         if (estadoLED) {
-          setColor(i, HIGH, LOW);   // Rojo
+          setColor(i, HIGH, LOW);   //Rojo
         } else {
-          setColor(i, LOW, LOW);    // Apagado
+          setColor(i, LOW, LOW);    //Apagado
         }
       }
       ultimoParpadeo = millis();
     }
   }
 
-  // Condición de salida: cuando ya no hay humo
+  //Condición de salida: cuando ya no hay humo
   if (emergenciaActiva && digitalRead(MQ2) == HIGH) {
     emergenciaActiva = false;
     emergenciaEnCurso = false;
@@ -414,7 +416,7 @@ void activarEmergencia() {
     servoEntrada.write(0);
     servoSalida.write(0);
     lcd.clear();
-    ultimo = -1;  // refresh pantalla normal
+    ultimo = -1;  //refresh pantalla normal
   }
 }
 

@@ -162,7 +162,10 @@ void loop() {
 
   ocupados = 0;
 
+ocupados = 0;
 
+// Solo actualiza LEDs por ocupación si NO hay emergencia
+if (!emergenciaActiva) {
   if (digitalRead(INFRA1) == LOW) {
     setColor(0, HIGH, LOW);
     ocupados++;
@@ -187,6 +190,7 @@ void loop() {
     setColor(4, HIGH, LOW);
     ocupados++;
   } else setColor(4, LOW, HIGH);
+}
   
   int libres = 5 - ocupados;
 

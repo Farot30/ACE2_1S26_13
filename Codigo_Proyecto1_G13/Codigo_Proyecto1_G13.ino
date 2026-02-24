@@ -102,7 +102,7 @@ void setup() {
 
   //Sensores
   pinMode(MQ2, INPUT);
-  attachInterrupt(digitalPinToInterrupt(MQ2), emergenciaISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(MQ2), emergenciaISR, FALLING);
 
   //Bóton de salida (Talanquera) 
   pinMode(BTN_Salida, INPUT_PULLUP);
@@ -126,6 +126,16 @@ void loop() {
   static unsigned long tiempoSerial = 0;
   if(millis() - tiempoSerial >= 500){
     tiempoSerial = millis();
+
+    Serial.print(" | MQ2 pin19: ");
+    Serial.print(digitalRead(MQ2));
+    if (digitalRead(MQ2) == HIGH) {
+      Serial.print(" → GAS DETECTADO (debería activar emergencia)");
+    } else {
+      Serial.print(" → sin gas");
+    }
+    Serial.print(" | EmergActiva: ");
+    Serial.println(emergenciaActiva ? "ACTIVA" : "no");
 
     Serial.print("S1: ");
     Serial.print(digitalRead(INFRA1));
@@ -208,14 +218,9 @@ void loop() {
 
   if(emergenciaActiva){
       activarEmergencia();
-      return;
     }
 
   btnSalida();
-
-  if (emergenciaActiva) {
-    return;   
-  }
 
   // ---- MAQUINA DE ESTADOS ----
   switch(estadoActual){
@@ -336,35 +341,78 @@ boolean comprobacion(byte lectura[], byte tarjeta[]){
   return true;
 }
 
-void activarEmergencia(){
+void activarEmergencia() {
 
+  // Variables estáticas para recordar estado
+  static bool emergenciaEnCurso = false;
+  static unsigned long ultimoParpadeo = 0;  // si quieres mover lastBlink aquí
+
+  // Si recién se activó la flag (primera vez)
+  if (emergenciaActiva && !emergenciaEnCurso) {
     digitalWrite(VENTILADOR, HIGH);
-
     servoEntrada.write(90);
     servoSalida.write(90);
 
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("!!! EMERGENCIA !!!");
-    lcd.setCursor(0,1);
+    lcd.setCursor(2,1);
     lcd.print("EVACUAR AREA");
 
-    while(digitalRead(MQ2) == HIGH){
-
-      if (millis() - lastBeep > 200) {
-        digitalWrite(BUZZER, !digitalRead(BUZZER));
-        lastBeep = millis();
-      }
-
-      parpadearLEDsEmergencia();
-    }
-
-    // Cuando ya no hay gas
-    emergenciaActiva = false;
-    digitalWrite(BUZZER, LOW);
-    digitalWrite(VENTILADOR, LOW);
-    lcd.clear();
+    emergenciaEnCurso = true;
+    lastBeep = millis();  // resetear para buzzer
+    ultimoParpadeo = millis();  // si usas otro nombre para blink
   }
+
+  // Si estamos en emergencia (cada loop)
+  if (emergenciaActiva) {
+
+    static int tonoActual = 500;          // Hz inicial (bajo)
+    static bool subiendo = true;
+
+    if (millis() - lastBeep >= 8) {       // cada 8 ms para que suene fluido
+      lastBeep = millis();
+
+      tone(BUZZER, tonoActual);           // genera el tono
+
+      if (subiendo) {
+        tonoActual += 6;                  // sube rápido
+        if (tonoActual >= 1400) subiendo = false;
+      } else {
+        tonoActual -= 6;                  // baja rápido
+        if (tonoActual <= 500) subiendo = true;
+      }
+    }
+    
+
+    // LEDs parpadeo (usa tu función o mueve la lógica aquí)
+    if (millis() - ultimoParpadeo > 300) {
+      static bool estadoLED = false;
+      estadoLED = !estadoLED;
+      for(int i = 0; i < 5; i++) {
+        if (estadoLED) {
+          setColor(i, HIGH, LOW);   // Rojo
+        } else {
+          setColor(i, LOW, LOW);    // Apagado
+        }
+      }
+      ultimoParpadeo = millis();
+    }
+  }
+
+  // Condición de salida: cuando ya no hay humo
+  if (emergenciaActiva && digitalRead(MQ2) == HIGH) {
+    emergenciaActiva = false;
+    emergenciaEnCurso = false;
+
+    noTone(BUZZER);
+    digitalWrite(VENTILADOR, LOW);
+    servoEntrada.write(0);
+    servoSalida.write(0);
+    lcd.clear();
+    ultimo = -1;  // refresh pantalla normal
+  }
+}
 
 void emergenciaISR() {
   emergenciaActiva = true;

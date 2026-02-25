@@ -41,47 +41,33 @@ El sistema implementa funcionalidades de control de acceso mediante RFID, monito
 
 ## 2. Componentes y Hardware Utilizado
 
-1. Arduino Mega 2560
-![arduino-mega](image.png)
 
-2. Modulo RFID MFRC522
-![Modulo RFID MFRC522](image-1.png)
-
-3. Pantalla LCD 16x2 I2C  
-![Pantalla LCD 16x2 I2C](image-2.png)
-
-4. Sensor Infrarrojo IR
-![Sensor Infrarrojo IR](image-3.png)
-
-5. Sensor Gas MQ-2
-![Sensor Gas MQ-2](image-4.png)
-
-6. Servomotor SG90 (entrada - salida)
-![Servomotor SG90](image-5.png)
-
-7. Buzzer Activo 5V
-![Buzzer Activo 5V](image-6.png)
-
-8.  Modulo Rele 1 Canal 5V
-![ Modulo Rele 1 Canal 5V](image-7.png)
-
-9. Ventilador DC 5V
-![Ventilador DC 5V](image-8.png)
-
-10. LED RGB
-![LED RGB](image-9.png)
-
-11. Resistencia 220Ω
-![Resistencia 220Ω](image-10.png)
-
-12. Boton Pulsador
-![Boton Pulsador](image-11.png)
-
-13. Cables Dupont M-M, M-F
-![Cables Dupont M-M, M-F](image-12.png)
-
-14. Protoboard
-![Protoboard](image-13.png)
+<table>
+  <tr>
+    <td align="center"><b>1. Arduino Mega 2560</b><br><img src="image.png" width="120"></td>
+    <td align="center"><b>2. Módulo RFID MFRC522</b><br><img src="image-1.png" width="120"></td>
+    <td align="center"><b>3. Pantalla LCD 16x2 I2C</b><br><img src="image-2.png" width="120"></td>
+    <td align="center"><b>4. Sensor Infrarrojo IR</b><br><img src="image-3.png" width="120"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>5. Sensor Gas MQ-2</b><br><img src="image-4.png" width="120"></td>
+    <td align="center"><b>6. Servomotor SG90 (entrada/salida)</b><br><img src="image-5.png" width="120"></td>
+    <td align="center"><b>7. Buzzer Activo 5V</b><br><img src="image-6.png" width="120"></td>
+    <td align="center"><b>8. Módulo Relé 1 Canal 5V</b><br><img src="image-7.png" width="120"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>9. Ventilador DC 5V</b><br><img src="image-8.png" width="120"></td>
+    <td align="center"><b>10. LED RGB</b><br><img src="image-9.png" width="120"></td>
+    <td align="center"><b>11. Resistencia 220Ω</b><br><img src="image-10.png" width="120"></td>
+    <td align="center"><b>12. Botón Pulsador</b><br><img src="image-11.png" width="120"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>13. Cables Dupont M-M, M-F</b><br><img src="image-12.png" width="120"></td>
+    <td align="center"><b>14. Protoboard</b><br><img src="image-13.png" width="120"></td>
+    <td></td>
+    <td></td>
+  </tr>
+</table>
 
 
 ### Lista Completa de Materiales y Conexiones

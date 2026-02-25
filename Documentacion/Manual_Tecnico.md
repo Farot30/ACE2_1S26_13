@@ -1,10 +1,12 @@
-# Manual Tecnico - Park-Guard: Sistema Inteligente de Gestion y Seguridad de Parqueos
 
-**Arquitectura de Computadoras y Ensambladores 2**
-**Ingeniero: GABRIEL ALEJANDRO DÍAZ LÓPEZ** 
-**Auxiliar 2: Samuel Isaí Muñoz Pereira**
-**Grupo 13**  
-**Fecha:** Febrero 2026
+# Manual Tecnico
+# Park-Guard: Sistema Inteligente de Gestion y Seguridad de Parqueos
+
+**Curso:** Arquitectura de Computadoras y Ensambladores 2  
+**Ingeniero:** Gabriel Alejandro Diaz Lopez  
+**Auxiliar:** Samuel Isai Muñoz Pereira  
+**Grupo:** 13  
+**Fecha:** 26 Febrero 2026
 
 ### Integrantes
 
@@ -39,7 +41,48 @@ El sistema implementa funcionalidades de control de acceso mediante RFID, monito
 
 ## 2. Componentes y Hardware Utilizado
 
-**[AQUI VA UNA FOTO DE TODOS LOS COMPONENTES ORGANIZADOS]**
+1. Arduino Mega 2560
+![arduino-mega](image.png)
+
+2. Modulo RFID MFRC522
+![Modulo RFID MFRC522](image-1.png)
+
+3. Pantalla LCD 16x2 I2C  
+![Pantalla LCD 16x2 I2C](image-2.png)
+
+4. Sensor Infrarrojo IR
+![Sensor Infrarrojo IR](image-3.png)
+
+5. Sensor Gas MQ-2
+![Sensor Gas MQ-2](image-4.png)
+
+6. Servomotor SG90 (entrada - salida)
+![Servomotor SG90](image-5.png)
+
+7. Buzzer Activo 5V
+![Buzzer Activo 5V](image-6.png)
+
+8.  Modulo Rele 1 Canal 5V
+![ Modulo Rele 1 Canal 5V](image-7.png)
+
+9. Ventilador DC 5V
+![Ventilador DC 5V](image-8.png)
+
+10. LED RGB
+![LED RGB](image-9.png)
+
+11. Resistencia 220Ω
+![Resistencia 220Ω](image-10.png)
+
+12. Boton Pulsador
+![Boton Pulsador](image-11.png)
+
+13. Cables Dupont M-M, M-F
+![Cables Dupont M-M, M-F](image-12.png)
+
+14. Protoboard
+![Protoboard](image-13.png)
+
 
 ### Lista Completa de Materiales y Conexiones
 
@@ -60,7 +103,7 @@ El sistema implementa funcionalidades de control de acceso mediante RFID, monito
 | 1 | Boton Pulsador | 18 (INPUT_PULLUP) | BTN1 | Activacion manual de salida |
 | 1 | Fuente 7-12V 2A | Jack Arduino | PWR1 | Alimentacion general del sistema |
 | - | Cables Dupont M-M, M-F | - | - | Conexiones generales |
-| - | Protoboard o PCB | - | - | Base de montaje |
+| - | Protoboard | - | - | Base de montaje |
 
 
 

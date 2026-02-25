@@ -30,6 +30,17 @@ enum Estado {
 
 Estado estadoActual = NORMAL;
 
+enum EstadoSalida {
+  SALIDA_NORMAL,
+  SALIDA_ABRIENDO,
+  SALIDA_ESPERANDO,
+  SALIDA_CERRANDO
+};
+
+EstadoSalida estadoSalida = SALIDA_NORMAL;
+unsigned long tiempoSalida = 0;
+int anguloSalida = 0;
+
 //CONTROL TIEMPOS
 unsigned long tiempoEstado = 0;
 unsigned long tiempoServo = 0;
@@ -253,7 +264,7 @@ if (!emergenciaActiva) {
 
 
     case ESPERANDO_ABIERTO:
-      if(millis() - tiempoServo >= 10){
+      if(millis() - tiempoServo >= 70){
           tiempoServo = millis();
           servoEntrada.write(anguloServo);
           anguloServo--;
@@ -301,8 +312,8 @@ if (!emergenciaActiva) {
           lcd.clear();
           lcd.setCursor(0, 0);
           lcd.print("Acceso concedido");
-          lcd.setCursor(3, 1);
-          lcd.print("Bienvenido");
+          lcd.setCursor(4, 1);
+          lcd.print("Grupo 13");
 
           estadoActual = MOSTRANDO_MENSAJE;
           tiempoEstado = millis();
@@ -444,17 +455,62 @@ void parpadearLEDsEmergencia() {
 }
 
 void btnSalida(){
-  if(digitalRead(BTN_Salida) == LOW){
-    for(int i=0;i<=90;i++){
-      servoSalida.write(i);
-      delay(5);
-    }
+  static unsigned long ultimoPresion = 0;
+  static bool botonAnterior = HIGH;  //Estado anterior del botón
 
-    delay(3000);
+  bool botonActual = digitalRead(BTN_Salida);
 
-    for(int i=90;i>=0;i++){
-      servoSalida.write(i);
-      delay(5);
+  //Solo detecta flanco descendente (HIGH -> LOW) + debounce
+  if (botonActual == LOW && botonAnterior == HIGH && millis() - ultimoPresion > 400) {
+    ultimoPresion = millis();
+
+    if (estadoSalida == SALIDA_NORMAL && !emergenciaActiva) {
+      estadoSalida = SALIDA_ABRIENDO;
+      tiempoSalida = millis();
+      anguloSalida = 0;
+      Serial.println("BOTON PRESIONADO - Iniciando apertura salida");
     }
+  }
+
+  botonAnterior = botonActual;  //Actualiza estado anterior
+
+  //Resto de la máquina de estados
+  switch (estadoSalida) {
+    case SALIDA_ABRIENDO:
+      if (millis() - tiempoSalida >= 10) {  // 10 ms por grado para más suave
+        tiempoSalida = millis();
+        servoSalida.write(anguloSalida);
+        anguloSalida++;
+
+        if (anguloSalida >= 90) {
+          estadoSalida = SALIDA_ESPERANDO;
+          tiempoSalida = millis();
+        }
+      }
+      break;
+
+    case SALIDA_ESPERANDO:
+      if (millis() - tiempoSalida >= 2000) {
+        estadoSalida = SALIDA_CERRANDO;
+        tiempoSalida = millis();
+        anguloSalida = 90;
+      }
+      break;
+
+    case SALIDA_CERRANDO:
+      if (millis() - tiempoSalida >= 10) {
+        tiempoSalida = millis();
+        servoSalida.write(anguloSalida);
+        anguloSalida--;
+
+        if (anguloSalida <= 0) {
+          estadoSalida = SALIDA_NORMAL;
+          Serial.println("Salida cerrada - listo para nuevo uso");
+        }
+      }
+      break;
+
+    case SALIDA_NORMAL:
+      break;
   }
 }

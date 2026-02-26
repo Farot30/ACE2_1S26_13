@@ -963,6 +963,9 @@ if (error == 0) Serial.println("Dispositivo encontrado en: " + direccion);
 LiquidCrystal_I2C lcd(0x27,16,2);  // Direccion correcta
 ```
 
+## 6. Evidencias del trabajo en equipo
+
+[Evidencias](https://drive.google.com/drive/folders/16a0nDSsxV7dsZ72J4IpI5oHQfwavGULc?usp=sharing "Evidencias")
 
 ## Anexos
 

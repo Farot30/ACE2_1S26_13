@@ -62,7 +62,7 @@ El sistema implementa funcionalidades de control de acceso mediante RFID, monito
     <td align="center"><b>12. Botón Pulsador</b><br><img src="/Documentacion/IMG/image-11.png" width="120"></td>
   </tr>
   <tr>
-    <td align="center"><b>13. Cables Dupont M-M, M-F</b><br><img src="/Documentacion/IMG/" width="120"></td>
+    <td align="center"><b>13. Cables Dupont M-M, M-F</b><br><img src="/Documentacion/IMG/image-12.png" width="120"></td>
     <td align="center"><b>14. Protoboard</b><br><img src="/Documentacion/IMG/image-13.png" width="120"></td>
     <td></td>
     <td></td>

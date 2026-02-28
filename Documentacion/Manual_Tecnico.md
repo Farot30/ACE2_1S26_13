@@ -137,11 +137,16 @@ El sistema Park-Guard se estructura en cuatro modulos principales que interactua
                          └─────────┘                       └──────────┘
 ```
 
+![estrcutural](IMG/diagrama_estructural.png)
+
+
 **Flujo de datos:**
 - **Entrada:** RFID lee tarjeta → Arduino valida → Servo abre talanquera (si hay espacio)
 - **Monitoreo:** Sensores IR detectan ocupacion → Arduino actualiza → LEDs y LCD muestran estado
 - **Salida:** Boton presionado → Arduino procesa → Servo abre talanquera de salida
 - **Emergencia:** MQ-2 detecta gas → Interrupcion → Arduino activa protocolo (ventilador, buzzer, servos)
+
+![diagrama-flujp](IMG/diagrama_flujo.png)
 
 ### 3.2 Descripcion de Modulos
 

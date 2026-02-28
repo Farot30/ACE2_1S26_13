@@ -28,6 +28,7 @@
 3. [Arquitectura del Sistema](#arquitectura-del-sistema)
 4. [Descripcion del Codigo por Modulos](#descripcion-del-codigo-por-modulos)
 5. [Problemas Encontrados y Soluciones](#problemas-encontrados-y-soluciones)
+6. [Bitácora de Desarrollo y Evidencias Fotográficas](#bitácora-de-desarrollo-y-evidencias-fotográficas)
 
 ---
 
@@ -968,9 +969,26 @@ if (error == 0) Serial.println("Dispositivo encontrado en: " + direccion);
 LiquidCrystal_I2C lcd(0x27,16,2);  // Direccion correcta
 ```
 
-## 6. Evidencias del trabajo en equipo
-Las evidencias del trabajo se encuentran en:
-[Evidencias](https://drive.google.com/drive/folders/16a0nDSsxV7dsZ72J4IpI5oHQfwavGULc?usp=sharing)
+## 6. Bitácora de Desarrollo y Evidencias Fotográficas
+
+A continuación se presenta el registro cronológico de las fases del proyecto, los avances realizados, los problemas encontrados y las soluciones implementadas.
+
+| Fase | Fecha | Actividad Realizada | Problemas Encontrados | Solución Aplicada |
+|------|-------|--------------------|-----------------------|-------------------|
+| 1 | 10/02/2026 | Selección de componentes, diseño inicial y asignación de pines | Sin problemas | - |
+| 2 | 14/02/2026 | Conexión del módulo RFID MFRC522 y primeras pruebas de lectura | Lectura inconsistente de la tarjeta: a veces la detecta y otras no. El problema persiste; es necesario mover físicamente el sensor para lograr la lectura. Posiblemente causado por interferencia o ángulo de acercamiento de la tarjeta | Solución parcial: se reposicionó el lector para mejorar la tasa de lectura. Como mitigación, se ajusta manualmente la posición del sensor cuando no detecta la tarjeta |
+| 3 | 17/02/2026 | Instalación y prueba de los 5 LEDs RGB | 2 LEDs eran de ánodo común y 3 de cátodo común. Al realizar pruebas, solo los de cátodo encendían correctamente; los de ánodo permanecían apagados | Se identificó el tipo de cada LED y se adaptó tanto el código (invirtiendo la lógica de los pines para los LEDs de ánodo) como las conexiones de cables según el tipo correspondiente |
+| 4 | 19/02/2026 | Integración de la pantalla LCD 16x2 I2C | Sin problemas | - |
+| 5 | 21/02/2026 | Implementación y prueba de los servomotores (talanqueras) | Los servomotores no giraban correctamente o se comportaban de forma errática debido a insuficiencia de corriente desde el Arduino | Se utilizó una fuente de poder de PC (5V) para alimentar directamente los servomotores, resolviendo el problema de caída de voltaje |
+| 6 | 23/02/2026 | Integración del sensor MQ-2 y protocolo de emergencia | Sin problemas | - |
+| 7 | 24/02/2026 | Pruebas generales de integración completa del sistema | Sin problemas adicionales | - |
+| 8 | 26/02/2026 | Ensamblaje final de la maqueta, ajustes y documentación | Sin problemas en la maqueta | - |
+
+### Evidencias Fotográficas
+
+El registro fotográfico completo del avance de la maqueta, desde su construcción inicial hasta la versión funcional, se encuentra en el siguiente enlace:
+
+[📁 Ver Evidencias en Google Drive](https://drive.google.com/drive/folders/16a0nDSsxV7dsZ72J4IpI5oHQfwavGULc?usp=sharing)
 
 ## Anexos
 

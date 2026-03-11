@@ -17,3 +17,11 @@
 | 6   |Diego Eduardo España Vásquez|202307716|
 
 ---
+
+#### Como levantar docker
+
+docker-compose up -d
+
+#### para detenerlo
+
+docker-compose down

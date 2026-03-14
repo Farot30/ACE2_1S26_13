@@ -14,9 +14,6 @@ class LoginSchema:
             if field not in data or not data[field]:
                 return False, f"Campo requerido: {field}"
         
-        if '@' not in data.get('email', ''):
-            return False, "Email inválido"
-        
         return True, "Validación exitosa"
 
 
@@ -34,10 +31,7 @@ class RegisterSchema:
             if field not in data or not data[field]:
                 return False, f"Campo requerido: {field}"
         
-        if '@' not in data.get('email', ''):
-            return False, "Email inválido"
-        
-        if len(data.get('password', '')) < 6:
-            return False, "Contraseña debe tener al menos 6 caracteres"
+        if len(data.get('password', '')) < 3:
+            return False, "Contraseña debe tener al menos 3 caracteres"
         
         return True, "Validación exitosa"

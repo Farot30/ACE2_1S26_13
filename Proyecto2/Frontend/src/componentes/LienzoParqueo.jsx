@@ -49,11 +49,15 @@ function LienzoParqueo({ espacios, nivelGas, estadoEmergencia }) {
     }
 
     if (referenciaContenedor.current) {
+      referenciaContenedor.current.innerHTML = ''
       instancia = new p5(boceto, referenciaContenedor.current)
     }
 
     return () => {
       if (instancia) instancia.remove()
+      if (referenciaContenedor.current) {
+        referenciaContenedor.current.innerHTML = ''
+      }
     }
   }, [espacios, nivelGas, estadoEmergencia])
 

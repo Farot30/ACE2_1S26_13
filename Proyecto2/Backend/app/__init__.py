@@ -51,6 +51,15 @@ def create_app(config_name=None):
     from app.websocket import register_socketio_events
     register_socketio_events(socketio)
     
+    # Inicializar Consumer MQTT (escucha sensores y emite Socket.IO)
+    from consumer_mqtt import iniciar_consumer_mqtt
+    try:
+        iniciar_consumer_mqtt(app, socketio)
+        print("Consumer MQTT iniciado: Escuchando eventos MQTT")
+    except Exception as e:
+        print(f"Consumer MQTT no disponible: {e}")
+        print("El Backend funcionará, pero sin eventos en tiempo real")
+    
     # Ruta de health check
     @app.route('/api/health', methods=['GET'])
     def health():
@@ -68,9 +77,9 @@ def init_mongo(app):
         
         # Verificar conexión
         mongo_client.admin.command('ping')
-        print("✓ Conexión a MongoDB establecida")
+        print("Conexión a MongoDB establecida")
     except Exception as e:
-        print(f"✗ Error conectando a MongoDB: {e}")
+        print(f"Error conectando a MongoDB: {e}")
         raise
 
 def get_db():

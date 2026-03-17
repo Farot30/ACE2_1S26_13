@@ -51,7 +51,7 @@ function PaginaPanel() {
       socket.emit('subscribe_parking', { canal: 'parking-updates' })
     })
 
-    socket.on('parking_update', (dato) => {
+    const handleParkingUpdate = (dato) => {
       setEspacios((anterior) =>
         anterior.map((espacio) =>
           espacio.space_number === dato.space_number
@@ -64,9 +64,20 @@ function PaginaPanel() {
         description: `espacio ${dato.space_number} actualizado`,
         timestamp: dato.timestamp,
       })
-    })
+    }
 
-    socket.on('ventilator_update', (dato) => {
+    const handleGasUpdate = (dato) => {
+      if (dato.ppm !== null && dato.ppm !== undefined) {
+        setNivelGas(dato.ppm)
+      }
+      insertarEventoEnVivo({
+        event_type: 'gas_update',
+        description: `nivel de gas actualizado a ${dato.ppm} ppm`,
+        timestamp: dato.timestamp,
+      })
+    }
+
+    const handleVentilatorUpdate = (dato) => {
       setEstadoVentilador(Boolean(dato.is_active))
       if (dato.gas_level !== null && dato.gas_level !== undefined) {
         setNivelGas(dato.gas_level)
@@ -76,27 +87,27 @@ function PaginaPanel() {
         description: `ventilador ${dato.is_active ? 'encendido' : 'apagado'}`,
         timestamp: dato.timestamp,
       })
-    })
+    }
 
-    socket.on('door_update', (dato) => {
+    const handleDoorUpdate = (dato) => {
       setEstadoPuertas((anterior) => ({ ...anterior, [dato.door_number]: dato.is_open }))
       insertarEventoEnVivo({
         event_type: 'door_update',
         description: `talanquera ${dato.door_number} ${dato.is_open ? 'abierta' : 'cerrada'}`,
         timestamp: dato.timestamp,
       })
-    })
+    }
 
-    socket.on('emergency_alert', (dato) => {
+    const handleEmergencyAlert = (dato) => {
       setEstadoEmergencia(true)
       insertarEventoEnVivo({
         event_type: 'emergency_alert',
         description: `alerta ${dato.alert_type || 'emergencia'} en ${dato.location || 'zona general'}`,
         timestamp: dato.timestamp,
       })
-    })
+    }
 
-    socket.on('system_status', (dato) => {
+    const handleSystemStatus = (dato) => {
       const estado = dato.status || {}
       if (typeof estado.gas_level === 'number') setNivelGas(estado.gas_level)
       if (typeof estado.emergency === 'boolean') setEstadoEmergencia(estado.emergency)
@@ -106,10 +117,22 @@ function PaginaPanel() {
         description: 'estado general actualizado',
         timestamp: dato.timestamp,
       })
-    })
+    }
+
+    socket.on('parking_update', handleParkingUpdate)
+    socket.on('gas_update', handleGasUpdate)
+    socket.on('ventilator_update', handleVentilatorUpdate)
+    socket.on('door_update', handleDoorUpdate)
+    socket.on('emergency_alert', handleEmergencyAlert)
+    socket.on('system_status', handleSystemStatus)
 
     return () => {
-      desconectarSocket()
+      socket.off('parking_update', handleParkingUpdate)
+      socket.off('gas_update', handleGasUpdate)
+      socket.off('ventilator_update', handleVentilatorUpdate)
+      socket.off('door_update', handleDoorUpdate)
+      socket.off('emergency_alert', handleEmergencyAlert)
+      socket.off('system_status', handleSystemStatus)
     }
   }, [])
 

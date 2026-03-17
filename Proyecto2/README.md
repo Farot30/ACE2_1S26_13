@@ -19,9 +19,10 @@
 ---
 
 #### Como levantar docker
-
+```bash
 docker-compose up -d
-
+```
 #### para detenerlo
-
+```bash
 docker-compose down
+```

@@ -18,11 +18,19 @@
 
 int ocupados = 0;
 volatile bool emergenciaActiva = false;
+bool emergenciaRemota = false;
+bool emergenciaEnCurso = false;
 int ultimo = -1;
+
+int tonoActual = 500;
+bool subiendo = true;
 
 //CONTROL DE ESTADOS
 enum Estado {
   NORMAL,
+  ESPERANDO_RESPUESTA,
+  MOSTRANDO_DENEGADO,
+  MOSTRANDO_TIMEOUT,
   MOSTRANDO_MENSAJE,
   ABRIENDO_SERVO,
   ESPERANDO_ABIERTO,
@@ -79,13 +87,12 @@ Servo servoSalida;
 
 LiquidCrystal_I2C lcd(0x27,16,2);
 
-byte lectura[4];
-byte tarjeta[4] = {0xB9, 0x1E, 0x19, 0xB4};
+String uidActual = "";
 MFRC522 Mlector(SS, RST);
 
 void setup() {
 
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   pinMode(53, OUTPUT);
   digitalWrite(53, HIGH);
@@ -135,46 +142,10 @@ void setup() {
 
 void loop() {
 
-  static unsigned long tiempoSerial = 0;
-  if(millis() - tiempoSerial >= 500){
-    tiempoSerial = millis();
-
-    Serial.print(" | MQ2 pin19: ");
-    Serial.print(digitalRead(MQ2));
-    if (digitalRead(MQ2) == HIGH) {
-      Serial.print(" → GAS DETECTADO (debería activar emergencia)");
-    } else {
-      Serial.print(" → sin gas");
-    }
-    Serial.print(" | EmergActiva: ");
-    Serial.println(emergenciaActiva ? "ACTIVA" : "no");
-
-    Serial.print("S1: ");
-    Serial.print(digitalRead(INFRA1));
-    Serial.print(" S2: ");
-    Serial.print(digitalRead(INFRA2));
-    Serial.print(" S3: ");
-    Serial.print(digitalRead(INFRA3));
-    Serial.print(" S4: ");
-    Serial.print(digitalRead(INFRA4));
-    Serial.print(" S5: ");
-    Serial.println(digitalRead(INFRA5));
-  }
-
-  static unsigned long tiempoDebug = 0;
-  if (millis() - tiempoDebug >= 1000) {  //Cada segundo
-    tiempoDebug = millis();
-    Serial.print("Estado actual: ");
-    switch (estadoActual) {
-      case NORMAL: Serial.println("NORMAL"); break;
-      case MOSTRANDO_MENSAJE: Serial.println("MOSTRANDO_MENSAJE"); break;
-      //Agrega los demás
-    }
-  }
+  //Leer comandos de la Raspberry
+  leerSerial();
 
   ocupados = 0;
-
-ocupados = 0;
 
 //Solo actualiza LEDs por ocupación si NO hay emergencia
 if (!emergenciaActiva) {
@@ -237,9 +208,54 @@ if (!emergenciaActiva) {
     }
 
   btnSalida();
+  
+  //Envío periódico del estado de sensores
+  static unsigned long tiempoPublish = 0;
+  if (millis() - tiempoPublish >= 1000) {
+    tiempoPublish = millis();
+    
+    String payload = "\"spaces\":[";
+    payload += String(!digitalRead(INFRA1)) + ",";
+    payload += String(!digitalRead(INFRA2)) + ",";
+    payload += String(!digitalRead(INFRA3)) + ",";
+    payload += String(!digitalRead(INFRA4)) + ",";
+    payload += String(!digitalRead(INFRA5));
+    payload += "],\"gas\":" + String(digitalRead(MQ2));
+    payload += ",\"fan\":" + String(digitalRead(VENTILADOR));
+    payload += ",\"emergency\":" + String(emergenciaActiva ? 1 : 0);
+    
+    enviarSerial("sensor", payload);
+  }
 
   //MAQUINA DE ESTADOS
   switch(estadoActual){
+
+    case ESPERANDO_RESPUESTA:
+      if (millis() - tiempoEstado >= 3000) {  // 3 segundos timeout
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Sin respuesta");
+        
+        estadoActual = MOSTRANDO_TIMEOUT;
+        tiempoEstado = millis();
+        
+        enviarSerial("event", "\"action\":\"timeout\"");
+      }
+      break;
+
+    case MOSTRANDO_DENEGADO:
+      if(millis() - tiempoEstado >= 1500){
+          estadoActual = NORMAL;
+          ultimo = -1;
+      }
+      break;
+
+    case MOSTRANDO_TIMEOUT:
+      if(millis() - tiempoEstado >= 1000){
+          estadoActual = NORMAL;
+          ultimo = -1;
+      }
+      break;
 
     case MOSTRANDO_MENSAJE:
       if(millis() - tiempoEstado >= 1000){   //mostrar 1 segundo
@@ -301,43 +317,31 @@ if (!emergenciaActiva) {
       return;
   }
 
-  if (!emergenciaActiva) {
+  if (!emergenciaActiva && estadoActual == NORMAL) {
     if(Mlector.PICC_IsNewCardPresent() && Mlector.PICC_ReadCardSerial()){
-      for(byte i=0; i<Mlector.uid.size; i++){
-        lectura[i] = Mlector.uid.uidByte[i];
+      // Convertir UID a formato hexadecimal
+      uidActual = "";
+      for(byte i = 0; i < Mlector.uid.size; i++){
+        if(Mlector.uid.uidByte[i] < 10) uidActual += "0";
+        uidActual += String(Mlector.uid.uidByte[i], HEX);
       }
+      uidActual.toUpperCase();
+      
+      // Mostrar mensaje de lectura
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Leyendo tarjeta.");
+      lcd.setCursor(0, 1);
+      lcd.print(uidActual);
+      
+      // Enviar UID a Raspberry por Serial
+      enviarSerial("rfid", "\"uid\":\"" + uidActual + "\"");
+      
+      // Cambiar a estado de espera
+      estadoActual = ESPERANDO_RESPUESTA;
+      tiempoEstado = millis();
 
-      if(comprobacion(lectura, tarjeta)){
-        if(libres > 0){
-
-          lcd.clear();
-          lcd.setCursor(0, 0);
-          lcd.print("Acceso concedido");
-          lcd.setCursor(4, 1);
-          lcd.print("Grupo 13");
-
-          estadoActual = MOSTRANDO_MENSAJE;
-          tiempoEstado = millis();
-
-        } else{
-            lcd.clear();
-            lcd.setCursor(0,0);
-            lcd.print("Parqueo lleno");
-            delay(1500);
-            lcd.clear();
-            ultimo = -1;
-        }
-
-      } else{
-          lcd.clear();
-          lcd.setCursor(0, 0);
-          lcd.print("Tarjeta invalida");
-          delay(1500);
-
-          ultimo = -1;
-      }
-
-      Mlector.PICC_HaltA();  //usamos esta función para finalizar la lectura del RFID
+      Mlector.PICC_HaltA();  // Finalizar lectura del RFID
       Mlector.PCD_StopCrypto1();
     }
   }
@@ -349,20 +353,84 @@ void setColor(int ledNumero, bool rojo, bool verde){
     digitalWrite(leds[ledNumero][1], verde);
 }
 
+void enviarSerial(String tipo, String payload) {
+  String mensaje = "{\"type\":\"" + tipo + "\"," + payload + "}";
+  Serial.println(mensaje);
+}
 
-boolean comprobacion(byte lectura[], byte tarjeta[]){
-  for(byte x=0; x<Mlector.uid.size; x++){
-    if(lectura[x] != tarjeta[x]){
-      return false;
+void leerSerial() {
+  static String buffer = "";
+
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\n') {
+      procesarComando(buffer);
+      buffer = "";
+    } else if (c != '\r') {
+      buffer += c;
     }
   }
-  return true;
+}
+
+void procesarComando(String msg) {
+  // Comando de acceso RFID
+  if (msg.indexOf("\"cmd\":\"access\"") >= 0) {
+    bool granted = msg.indexOf("\"granted\":true") >= 0;
+    
+    if (granted && estadoActual == ESPERANDO_RESPUESTA) {
+      // Acceso concedido
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Acceso concedido");
+      lcd.setCursor(4, 1);
+      lcd.print("Grupo 13");
+      
+      estadoActual = MOSTRANDO_MENSAJE;
+      tiempoEstado = millis();
+      
+      enviarSerial("event", "\"action\":\"entry_approved\"");
+    } else if (estadoActual == ESPERANDO_RESPUESTA) {
+      // Acceso denegado
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Acceso denegado");
+      
+      estadoActual = MOSTRANDO_DENEGADO;
+      tiempoEstado = millis();
+      
+      enviarSerial("event", "\"action\":\"entry_denied\"");
+    }
+  }
+  
+  // Comando de ventilador
+  if (msg.indexOf("\"cmd\":\"fan\"") >= 0) {
+    bool state = msg.indexOf("\"state\":true") >= 0;
+    digitalWrite(VENTILADOR, state ? HIGH : LOW);
+  }
+  
+  // Comando de emergencia
+  if (msg.indexOf("\"cmd\":\"emergency\"") >= 0) {
+    bool state = msg.indexOf("\"state\":true") >= 0;
+    emergenciaActiva = state;
+    emergenciaRemota = state;
+    
+    // Si se apaga la emergencia desde el dashboard
+    if (!state) {
+      emergenciaEnCurso = false;
+      noTone(BUZZER);
+      digitalWrite(VENTILADOR, LOW);
+      servoEntrada.write(0);
+      servoSalida.write(0);
+      lcd.clear();
+      ultimo = -1;
+      enviarSerial("event", "\"action\":\"emergency_off\"");
+    }
+  }
 }
 
 void activarEmergencia() {
 
   //Variables estáticas para recordar estado
-  static bool emergenciaEnCurso = false;
   static unsigned long ultimoParpadeo = 0;  
 
   //Si recién se activó la flag (primera vez)
@@ -373,20 +441,21 @@ void activarEmergencia() {
 
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("!!! EMERGENCIA !!!");
+    lcd.print("!! EMERGENCIA !!");
     lcd.setCursor(2,1);
     lcd.print("EVACUAR AREA");
 
     emergenciaEnCurso = true;
     lastBeep = millis();  //resetear para buzzer
-    ultimoParpadeo = millis();  
+    ultimoParpadeo = millis();
+    tonoActual = 500;
+    subiendo = true;
+    
+    enviarSerial("event", "\"action\":\"emergency_on\"");
   }
 
   //Si estamos en emergencia (cada loop)
   if (emergenciaActiva) {
-
-    static int tonoActual = 500;          //Hz inicial (bajo)
-    static bool subiendo = true;
 
     if (millis() - lastBeep >= 8) {       //cada 8 ms para que suene fluido
       lastBeep = millis();
@@ -418,8 +487,8 @@ void activarEmergencia() {
     }
   }
 
-  //Condición de salida: cuando ya no hay humo
-  if (emergenciaActiva && digitalRead(MQ2) == HIGH) {
+  //Condición de salida: cuando ya no hay humo y no es emergencia remota
+  if (emergenciaActiva && !emergenciaRemota && digitalRead(MQ2) == HIGH) {
     emergenciaActiva = false;
     emergenciaEnCurso = false;
 
@@ -429,30 +498,13 @@ void activarEmergencia() {
     servoSalida.write(0);
     lcd.clear();
     ultimo = -1;  //refresh pantalla normal
+    
+    enviarSerial("event", "\"action\":\"emergency_off\"");
   }
 }
 
 void emergenciaISR() {
   emergenciaActiva = true;
-}
-
-void parpadearLEDsEmergencia() {
-  static unsigned long lastBlink = 0;
-  static bool estadoLED = false;
-  
-  if (millis() - lastBlink > 300) {
-    estadoLED = !estadoLED;
-    
-    for(int i = 0; i < 5; i++) {
-      if (estadoLED) {
-        setColor(i, HIGH, LOW);   //Rojo
-      } else {
-        setColor(i, LOW, LOW);    //Apagado
-      }
-    }
-
-    lastBlink = millis();
-  }
 }
 
 void btnSalida(){
@@ -469,7 +521,7 @@ void btnSalida(){
       estadoSalida = SALIDA_ABRIENDO;
       tiempoSalida = millis();
       anguloSalida = 0;
-      Serial.println("BOTON PRESIONADO - Iniciando apertura salida");
+      enviarSerial("event", "\"action\":\"exit\"");
     }
   }
 
@@ -506,7 +558,7 @@ void btnSalida(){
 
         if (anguloSalida <= 0) {
           estadoSalida = SALIDA_NORMAL;
-          Serial.println("Salida cerrada - listo para nuevo uso");
+          enviarSerial("event", "\"action\":\"exit_closed\"");
         }
       }
       break;

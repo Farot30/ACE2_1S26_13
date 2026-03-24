@@ -1,24 +1,24 @@
-# frontend park guard 2.0
+# Frontend Park-Guard 2.0
 
-## iniciar
+## Iniciar
 
 ```bash
 npm install
 npm run dev -- --host 0.0.0.0 --port 3000
 ```
 
-## build
+## Build
 
 ```bash
 npm run build
 ```
 
-## credenciales de prueba (temporales)
+## Credenciales de prueba (temporales)
 
 - usuario: `g13`
 - contraseña: `123`
 
-## variables opcionales
+## Variables Opcionales
 
 - `VITE_API_URL`
 - `VITE_SOCKET_URL`

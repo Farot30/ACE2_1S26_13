@@ -143,3 +143,36 @@ El sistema utiliza una arquitectura distribuida y desacoplada.
 <p align="center">
  <img src="Diagrama.png" widt>
 </p>
+
+
+---
+
+## Arquitectura de Contenedores
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Docker Compose Network                │
+│              (park-guard-network)                       │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  │
+│  │   Frontend   │  │   Backend    │  │  Consumer   │  │
+│  │   (React)    │  │   (Flask)    │  │  (Python)   │  │
+│  │   :3000      │  │   :5000      │  │  sin puerto │  │
+│  └──────────────┘  └──────────────┘  └─────────────┘  │
+│         │                 │                 │          │
+│         └─────────────────┼─────────────────┘          │
+│                           │                            │
+│         ┌─────────────────┼──────────────┐             │
+│         │                 │              │             │
+│    ┌──────────┐    ┌────────────┐        │             │
+│    │ MongoDB  │    │ Mosquitto  │        │             │
+│    │  :27017  │    │:1883/:9001 │        │             │
+│    │ (NoSQL)  │    │  (MQTT)    │        │             │
+│    └──────────┘    └────────────┘        │             │
+│                                          │             │
+│              📁 Volúmenes                │             │
+│         mongodb_data, mosquitto_data,    │             │
+│         mosquitto_logs, ./logs           │             │
+└─────────────────────────────────────────────────────────┘
+```

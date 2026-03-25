@@ -117,7 +117,7 @@ void setup() {
   servoEntrada.attach(PIN_servoEntrada);
   servoSalida.attach(PIN_servoSalida);
   servoEntrada.write(0);
-  servoSalida.write(0);
+  servoSalida.write(90);
 
   //Sensores
   pinMode(MQ2, INPUT);
@@ -420,7 +420,7 @@ void procesarComando(String msg) {
       noTone(BUZZER);
       digitalWrite(VENTILADOR, LOW);
       servoEntrada.write(0);
-      servoSalida.write(0);
+      servoSalida.write(90);
       lcd.clear();
       ultimo = -1;
       enviarSerial("event", "\"action\":\"emergency_off\"");
@@ -437,7 +437,7 @@ void activarEmergencia() {
   if (emergenciaActiva && !emergenciaEnCurso) {
     digitalWrite(VENTILADOR, HIGH);
     servoEntrada.write(90);
-    servoSalida.write(90);
+    servoSalida.write(0);
 
     lcd.clear();
     lcd.setCursor(0,0);
@@ -495,7 +495,7 @@ void activarEmergencia() {
     noTone(BUZZER);
     digitalWrite(VENTILADOR, LOW);
     servoEntrada.write(0);
-    servoSalida.write(0);
+    servoSalida.write(90);
     lcd.clear();
     ultimo = -1;  //refresh pantalla normal
     
@@ -520,7 +520,7 @@ void btnSalida(){
     if (estadoSalida == SALIDA_NORMAL && !emergenciaActiva) {
       estadoSalida = SALIDA_ABRIENDO;
       tiempoSalida = millis();
-      anguloSalida = 0;
+      anguloSalida = 90;
       enviarSerial("event", "\"action\":\"exit\"");
     }
   }
@@ -533,9 +533,9 @@ void btnSalida(){
       if (millis() - tiempoSalida >= 10) {  // 10 ms por grado para más suave
         tiempoSalida = millis();
         servoSalida.write(anguloSalida);
-        anguloSalida++;
+        anguloSalida--;
 
-        if (anguloSalida >= 90) {
+        if (anguloSalida <= 0) {
           estadoSalida = SALIDA_ESPERANDO;
           tiempoSalida = millis();
         }
@@ -546,7 +546,7 @@ void btnSalida(){
       if (millis() - tiempoSalida >= 2000) {
         estadoSalida = SALIDA_CERRANDO;
         tiempoSalida = millis();
-        anguloSalida = 90;
+        anguloSalida = 0;
       }
       break;
 
@@ -554,9 +554,9 @@ void btnSalida(){
       if (millis() - tiempoSalida >= 10) {
         tiempoSalida = millis();
         servoSalida.write(anguloSalida);
-        anguloSalida--;
+        anguloSalida++;
 
-        if (anguloSalida <= 0) {
+        if (anguloSalida >= 90) {
           estadoSalida = SALIDA_NORMAL;
           enviarSerial("event", "\"action\":\"exit_closed\"");
         }

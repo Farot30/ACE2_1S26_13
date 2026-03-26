@@ -21,4 +21,4 @@ npm run build
 ## Variables Opcionales
 
 - `VITE_API_URL`
-- `VITE_SOCKET_URL`
+- `VITE_MQTT_URL` (por defecto: `ws://localhost:9001`)

@@ -1,5 +1,5 @@
 """Rutas de gestión de usuarios RFID"""
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request
 from app.services import UserService
 from app.schemas import UserCreateSchema, UserUpdateSchema
 from app.utils import token_required, create_response, create_error_response
@@ -156,6 +156,55 @@ def deactivate_user(user_id, admin_id, email):
     if not success:
         return create_error_response(message, 400)
     
+    return create_response(
+        message=message,
+        status_code=200
+    )
+
+
+@bp.route('/<user_id>/balance', methods=['PATCH'])
+@token_required
+def update_user_balance(user_id, admin_id, email):
+    """
+    Cargar saldo a un usuario
+    
+    Body:
+    {
+        "amount": 100.00
+    }
+    """
+    data = request.get_json()
+    
+    if not data or 'amount' not in data:
+        return create_error_response("Campo 'amount' requerido", 400)
+    
+    try:
+        amount = float(data['amount'])
+    except (ValueError, TypeError):
+        return create_error_response("'amount' debe ser un número", 400)
+    
+    success, message = UserService.update_balance(user_id, amount)
+    
+    if not success:
+        status_code = 404 if "no encontrado" in message else 400
+        return create_error_response(message, status_code)
+    
+    return create_response(
+        message=message,
+        status_code=200
+    )
+
+
+@bp.route('/<user_id>/balance/reset', methods=['PATCH'])
+@token_required
+def reset_user_balance(user_id, admin_id, email):
+    """Reiniciar saldo del usuario a Q5.00"""
+    success, message = UserService.reset_balance(user_id, 5.0)
+
+    if not success:
+        status_code = 404 if "no encontrado" in message else 400
+        return create_error_response(message, status_code)
+
     return create_response(
         message=message,
         status_code=200

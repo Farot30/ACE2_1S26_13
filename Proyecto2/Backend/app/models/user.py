@@ -24,6 +24,7 @@ class User:
             'rfid_card': rfid_card,
             'name': name,
             'is_active': is_active,
+            'balance': 5.0,
             'created_at': datetime.utcnow(),
             'updated_at': datetime.utcnow(),
             'last_access': None,
@@ -35,6 +36,8 @@ class User:
         """Convertir documento a diccionario para enviar en respuesta"""
         if doc is None:
             return None
+        if doc.get('balance') is None:
+            doc['balance'] = 5.0
         doc['id'] = str(doc.get('_id', ''))
         doc.pop('_id', None)
         return doc

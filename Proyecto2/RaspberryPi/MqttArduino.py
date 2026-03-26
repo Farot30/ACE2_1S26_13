@@ -23,11 +23,13 @@ TOPICO_VENTILADOR = "park-guard/ventilator/command"
 TOPICOS_COMANDOS = [
     "park-guard/commands/fan",
     "park-guard/commands/emergency",
-    "park-guard/commands/barrier/+",
+    "park-guard/commands/door/entrance",
+    "park-guard/commands/door/exit",
     "park-guard/commands/access",
     "/park-guard/commands/fan",
     "/park-guard/commands/emergency",
-    "/park-guard/commands/barrier/+",
+    "/park-guard/commands/door/entrance",
+    "/park-guard/commands/door/exit",
     "/park-guard/commands/access",
 ]
 
@@ -138,12 +140,19 @@ def al_mensaje(cliente, userdata, msg):
             "cmd": "emergency",
             "state": comando == "activate_emergency",
         }
-    elif "commands/barrier" in msg.topic and comando:
-        accion = "open" if comando == "open_barrier" else "close"
+    elif "commands/door/entrance" in msg.topic and comando:
+        accion = "open" if comando == "open_door" else "close"
         mensaje = {
-            "cmd": "barrier",
+            "cmd": "door",
+            "door": "entrance",
             "action": accion,
-            "space": payload.get("space_number"),
+        }
+    elif "commands/door/exit" in msg.topic and comando:
+        accion = "open" if comando == "open_door" else "close"
+        mensaje = {
+            "cmd": "door",
+            "door": "exit",
+            "action": accion,
         }
     else:
         mensaje = payload

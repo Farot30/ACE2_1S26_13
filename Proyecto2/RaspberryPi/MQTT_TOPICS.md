@@ -43,11 +43,29 @@ park-guard/ventilator/command
     {"command":"activate_emergency","triggered_by":"admin","timestamp":"..."}
     {"command":"deactivate_emergency","resolved_by":"admin","timestamp":"..."}
 
-/park-guard/commands/barrier/<space_number>
+/park-guard/commands/door/entrance
   Publicador: Backend
   Payload:
-    {"command":"open_barrier","space_number":1,"triggered_by":"admin","timestamp":"..."}
-    {"command":"close_barrier","space_number":1,"triggered_by":"admin","timestamp":"..."}
+    {"command":"open_door","door":"entrance","triggered_by":"admin","timestamp":"..."}
+    {"command":"close_door","door":"entrance","triggered_by":"admin","timestamp":"..."}
+
+/park-guard/commands/door/exit
+  Publicador: Backend
+  Payload:
+    {"command":"open_door","door":"exit","triggered_by":"admin","timestamp":"..."}
+    {"command":"close_door","door":"exit","triggered_by":"admin","timestamp":"..."}
+
+## Topics de estado (publicados por Arduino/Raspberry Pi)
+
+park-guard/doors/entrance/status
+  Publicador: Raspberry Pi (desde Arduino)
+  Payload:
+    {"type":"door_update","door":"entrance","is_open":true,"timestamp":"..."}
+
+park-guard/doors/exit/status
+  Publicador: Raspberry Pi (desde Arduino)
+  Payload:
+    {"type":"door_update","door":"exit","is_open":true,"timestamp":"..."}
 
 /park-guard/commands/access
   Publicador: Backend (opcional)

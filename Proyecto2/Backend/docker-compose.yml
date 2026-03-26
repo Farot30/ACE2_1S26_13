@@ -41,7 +41,7 @@ services:
       start_period: 10s
 
   backend:
-    image: farot3/park-guard-backend:latest
+    image: farot33/park-guard-backend:latest
     container_name: park-guard-backend
     environment:
       FLASK_ENV: production
@@ -67,7 +67,7 @@ services:
     restart: unless-stopped
 
   consumer:
-    image: farot3/park-guard-consumer:latest
+    image: farot33/park-guard-consumer:latest
     container_name: park-guard-consumer
     environment:
       MQTT_BROKER: mosquitto
@@ -94,7 +94,7 @@ services:
         max-file: "3"
 
   frontend:
-    image: farot3/park-guard-frontend:latest
+    image: farot33/park-guard-frontend:latest
     container_name: park-guard-frontend
     environment:
       VITE_API_URL: http://localhost:5000

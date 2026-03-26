@@ -1,16 +1,17 @@
 import json
+import os
 import time
 import serial
 import paho.mqtt.client as mqtt
 
 #Arduino
-PUERTO_SERIAL = "/dev/ttyACM0"
-BAUDRATE_SERIAL = 115200
+PUERTO_SERIAL = os.getenv("SERIAL_PORT", "/dev/ttyACM0")
+BAUDRATE_SERIAL = int(os.getenv("SERIAL_BAUDRATE", "115200"))
 
-# IP de ejemplo del broker MQTT cambiar
-BROKER_MQTT = "192.168.1.100"
-PUERTO_MQTT = 1883
-KEEPALIVE_MQTT = 60
+# Configuración MQTT (evita broker hardcodeado)
+BROKER_MQTT = os.getenv("MQTT_BROKER", "localhost")
+PUERTO_MQTT = int(os.getenv("MQTT_PORT", "1883"))
+KEEPALIVE_MQTT = int(os.getenv("MQTT_KEEPALIVE", "60"))
 
 # Topics esperados por el backend (consumer_mqtt.py)
 TOPICO_PARQUEO = "park-guard/parking/{space}/status"
@@ -25,11 +26,13 @@ TOPICOS_COMANDOS = [
     "park-guard/commands/emergency",
     "park-guard/commands/door/entrance",
     "park-guard/commands/door/exit",
+    "park-guard/commands/barrier/+",
     "park-guard/commands/access",
     "/park-guard/commands/fan",
     "/park-guard/commands/emergency",
     "/park-guard/commands/door/entrance",
     "/park-guard/commands/door/exit",
+    "/park-guard/commands/barrier/+",
     "/park-guard/commands/access",
 ]
 
@@ -154,6 +157,18 @@ def al_mensaje(cliente, userdata, msg):
             "door": "exit",
             "action": accion,
         }
+    elif "commands/barrier/" in msg.topic and comando:
+        try:
+            numero_espacio = int(msg.topic.rstrip("/").split("/")[-1])
+        except (ValueError, IndexError):
+            numero_espacio = payload.get("space")
+
+        accion = "open" if comando == "open_barrier" else "close"
+        mensaje = {
+            "cmd": "barrier",
+            "space": numero_espacio,
+            "action": accion,
+        }
     else:
         mensaje = payload
 
@@ -162,6 +177,8 @@ def al_mensaje(cliente, userdata, msg):
 
 
 def principal():
+    print(f"Serial: {PUERTO_SERIAL} @ {BAUDRATE_SERIAL}")
+    print(f"MQTT: {BROKER_MQTT}:{PUERTO_MQTT}")
     conexion_serial = serial.Serial(PUERTO_SERIAL, BAUDRATE_SERIAL, timeout=1)
     cliente_mqtt = mqtt.Client()
     cliente_mqtt.user_data_set({"conexion_serial": conexion_serial})

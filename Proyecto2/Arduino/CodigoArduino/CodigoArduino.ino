@@ -454,6 +454,23 @@ void procesarComando(String msg) {
       }
     }
   }
+
+  //Comando de puertas (talanqueras) remoto desde backend
+  if (msg.indexOf("\"cmd\":\"door\"") >= 0) {
+    bool abrir = msg.indexOf("\"action\":\"open\"") >= 0;
+
+    if (msg.indexOf("\"door\":\"entrance\"") >= 0) {
+      servoEntrada.write(abrir ? 90 : 0);
+      enviarSerial("event", abrir
+        ? "\"action\":\"entrance_open\""
+        : "\"action\":\"entrance_closed\"");
+    } else if (msg.indexOf("\"door\":\"exit\"") >= 0) {
+      servoSalida.write(abrir ? 0 : 90);
+      enviarSerial("event", abrir
+        ? "\"action\":\"exit_open\""
+        : "\"action\":\"exit_closed\"");
+    }
+  }
 }
 
 void activarEmergencia() {

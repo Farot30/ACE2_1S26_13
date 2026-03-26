@@ -307,8 +307,17 @@ function PaginaPanel() {
     }
   }
 
-  function crearTimestamp() {
-    return new Date().toISOString()
+  async function ejecutarComandoRemoto(ruta, mensajeError, mensajeExito = '') {
+    setError('')
+    try {
+      await solicitarApi('post', ruta)
+      if (mensajeExito) {
+        setMensaje(mensajeExito)
+        setTimeout(() => setMensaje(''), 2000)
+      }
+    } catch {
+      setError(mensajeError)
+    }
   }
 
   function salir() {
@@ -453,23 +462,13 @@ function PaginaPanel() {
               <div className="fila-botones">
                 <button
                   disabled={estadoVentilador}
-                  onClick={() =>
-                    enviarComando('park-guard/commands/fan', {
-                      command: 'activate_fan',
-                      timestamp: crearTimestamp(),
-                    })
-                  }
+                  onClick={() => ejecutarComandoRemoto('/api/commands/fan/activate', 'no se pudo encender ventilador', 'ventilador activado')}
                 >
                   encender
                 </button>
                 <button
                   disabled={!estadoVentilador}
-                  onClick={() =>
-                    enviarComando('park-guard/commands/fan', {
-                      command: 'deactivate_fan',
-                      timestamp: crearTimestamp(),
-                    })
-                  }
+                  onClick={() => ejecutarComandoRemoto('/api/commands/fan/deactivate', 'no se pudo apagar ventilador', 'ventilador desactivado')}
                 >
                   apagar
                 </button>
@@ -478,7 +477,30 @@ function PaginaPanel() {
 
             <div className="tarjeta-accion-remota">
               <div className="encabezado-accion-remota">
-                <div className="titulo-accion-remota">� talanquera entrada</div>
+                <div className="titulo-accion-remota">🚨 emergencia</div>
+                <span className={`insignia-estado ${estadoEmergencia ? 'alerta' : 'ok'}`}>
+                  {estadoEmergencia ? 'activa' : 'normal'}
+                </span>
+              </div>
+              <div className="fila-botones">
+                <button
+                  disabled={estadoEmergencia}
+                  onClick={() => ejecutarComandoRemoto('/api/commands/emergency/activate', 'no se pudo activar emergencia', 'emergencia activada')}
+                >
+                  activar
+                </button>
+                <button
+                  disabled={!estadoEmergencia}
+                  onClick={() => ejecutarComandoRemoto('/api/commands/emergency/deactivate', 'no se pudo desactivar emergencia', 'emergencia desactivada')}
+                >
+                  desactivar
+                </button>
+              </div>
+            </div>
+
+            <div className="tarjeta-accion-remota">
+              <div className="encabezado-accion-remota">
+                <div className="titulo-accion-remota">🚧 talanquera entrada</div>
                 <span className={`insignia-estado ${estadoTalanqueraEntrada ? 'activo' : 'normal'}`}>
                   {estadoTalanqueraEntrada ? 'abierta' : 'cerrada'}
                 </span>

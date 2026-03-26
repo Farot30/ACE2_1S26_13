@@ -413,19 +413,18 @@ void procesarComando(String msg) {
     }
   }
   
-  // Comando de ventilador
+  //Comando de ventilador
   if (msg.indexOf("\"cmd\":\"fan\"") >= 0) {
     bool state = msg.indexOf("\"state\":true") >= 0;
     digitalWrite(VENTILADOR, state ? HIGH : LOW);
+    enviarSerial("event", state ? "\"action\":\"fan_on\"" : "\"action\":\"fan_off\"");
   }
   
-  // Comando de emergencia
+  //Comando de emergencia
   if (msg.indexOf("\"cmd\":\"emergency\"") >= 0) {
     bool state = msg.indexOf("\"state\":true") >= 0;
     emergenciaActiva = state;
     emergenciaRemota = state;
-    
-    // Si se apaga la emergencia desde el dashboard
     if (!state) {
       emergenciaEnCurso = false;
       noTone(BUZZER);
@@ -440,20 +439,16 @@ void procesarComando(String msg) {
 
   //Comando de barrera/espacio
   if (msg.indexOf("\"cmd\":\"barrier\"") >= 0) {
-    // Extraer el número de espacio (viene como "space":1, índice base 1)
+    bool habilitado = msg.indexOf("\"action\":\"open\"") >= 0;
     for (int i = 0; i < 5; i++) {
       String buscar = "\"space\":" + String(i + 1);
       if (msg.indexOf(buscar) >= 0) {
-        bool habilitado = msg.indexOf("\"action\":\"open\"") >= 0;
         espacioHabilitado[i] = habilitado;
-        
-        //Actualizar LED inmediatamente
         if (!habilitado) {
-          setColor(i, HIGH, HIGH);  //amarillo = mantenimiento
+          setColor(i, HIGH, HIGH);
         }
-        
-        enviarSerial("event", "\"action\":\"barrier_updated\",\"space\":" + 
-                    String(i + 1) + ",\"enabled\":" + 
+        enviarSerial("event", "\"action\":\"barrier_updated\",\"space\":" +
+                    String(i + 1) + ",\"enabled\":" +
                     String(habilitado ? "true" : "false"));
         break;
       }

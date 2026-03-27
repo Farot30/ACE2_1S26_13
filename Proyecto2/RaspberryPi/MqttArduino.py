@@ -18,17 +18,18 @@ TOPICO_GAS = "park-guard/gas/sensor"
 TOPICO_RFID = "park-guard/rfid/read"
 TOPICO_EMERGENCIA = "park-guard/emergency/trigger"
 TOPICO_VENTILADOR = "park-guard/ventilator/command"
-TOPICO_EVENTOS = "park-guard/events/log"
 
 # Topics de comandos publicados por el backend
 TOPICOS_COMANDOS = [
     "park-guard/commands/fan",
     "park-guard/commands/emergency",
-    "park-guard/commands/barrier/+",
+    "park-guard/commands/door/entrance",
+    "park-guard/commands/door/exit",
     "park-guard/commands/access",
     "/park-guard/commands/fan",
     "/park-guard/commands/emergency",
-    "/park-guard/commands/barrier/+",
+    "/park-guard/commands/door/entrance",
+    "/park-guard/commands/door/exit",
     "/park-guard/commands/access",
 ]
 
@@ -101,12 +102,8 @@ def procesar_rfid(payload, cliente):
     })
 
 
-def procesar_evento(payload, cliente):
-    publicar_json(cliente, TOPICO_EVENTOS, {
-        **payload,
-        "timestamp": payload.get("timestamp", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())),
-    })
-    print(f"Evento Arduino publicado a MQTT: {payload}")
+def procesar_evento(payload):
+    print(f"Evento Arduino recibido (sin destino MQTT): {payload}")
 
 
 def al_conectar(cliente, userdata, flags, rc):
@@ -143,12 +140,19 @@ def al_mensaje(cliente, userdata, msg):
             "cmd": "emergency",
             "state": comando == "activate_emergency",
         }
-    elif "commands/barrier" in msg.topic and comando:
-        accion = "open" if comando == "open_barrier" else "close"
+    elif "commands/door/entrance" in msg.topic and comando:
+        accion = "open" if comando == "open_door" else "close"
         mensaje = {
-            "cmd": "barrier",
+            "cmd": "door",
+            "door": "entrance",
             "action": accion,
-            "space": payload.get("space_number"),
+        }
+    elif "commands/door/exit" in msg.topic and comando:
+        accion = "open" if comando == "open_door" else "close"
+        mensaje = {
+            "cmd": "door",
+            "door": "exit",
+            "action": accion,
         }
     else:
         mensaje = payload
@@ -190,7 +194,7 @@ def principal():
             elif tipo_mensaje == "rfid":
                 procesar_rfid(payload, cliente_mqtt)
             elif tipo_mensaje == "event":
-                procesar_evento(payload, cliente_mqtt)
+                procesar_evento(payload)
             else:
                 print(f"Tipo desconocido: {payload}")
 

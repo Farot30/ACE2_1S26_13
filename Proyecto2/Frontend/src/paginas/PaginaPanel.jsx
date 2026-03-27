@@ -14,7 +14,7 @@ import TarjetaMetrica from '../componentes/TarjetaMetrica'
 import LienzoParqueo from '../componentes/LienzoParqueo'
 import { solicitarApi } from '../servicios/api'
 import { cerrarSesion, esSesionPrueba } from '../servicios/autenticacion'
-import { conectarSocket, desconectarSocket } from '../servicios/socket'
+import { conectarMqtt, desconectarMqtt } from '../servicios/mqtt'
 import { formatearFecha } from '../utilidades/fechas'
 import { exportarReporte } from '../utilidades/reporte'
 
@@ -29,7 +29,8 @@ function PaginaPanel() {
   const [nivelGas, setNivelGas] = useState(null)
   const [estadoVentilador, setEstadoVentilador] = useState(false)
   const [estadoEmergencia, setEstadoEmergencia] = useState(false)
-  const [estadoPuertas, setEstadoPuertas] = useState({})
+  const [estadoTalanqueraEntrada, setEstadoTalanqueraEntrada] = useState(false)
+  const [estadoTalanqueraSalida, setEstadoTalanqueraSalida] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [mensaje, setMensaje] = useState('')
   const [error, setError] = useState('')
@@ -37,6 +38,8 @@ function PaginaPanel() {
   const [historialUsuario, setHistorialUsuario] = useState([])
   const [nombreNuevo, setNombreNuevo] = useState('')
   const [tarjetaNueva, setTarjetaNueva] = useState('')
+  const [usuarioParaSaldo, setUsuarioParaSaldo] = useState(null)
+  const [montoSaldo, setMontoSaldo] = useState('')
 
   const nombreAdmin = localStorage.getItem('admin_nombre') || 'admin'
 
@@ -45,10 +48,10 @@ function PaginaPanel() {
   }, [])
 
   useEffect(() => {
-    const socket = conectarSocket()
+    const clienteMqtt = conectarMqtt()
 
-    socket.on('connect', () => {
-      socket.emit('subscribe_parking', { canal: 'parking-updates' })
+    clienteMqtt.on('connect', () => {
+      clienteMqtt.emit('subscribe_parking', { canal: 'parking-updates' })
     })
 
     const handleParkingUpdate = (dato) => {
@@ -90,10 +93,14 @@ function PaginaPanel() {
     }
 
     const handleDoorUpdate = (dato) => {
-      setEstadoPuertas((anterior) => ({ ...anterior, [dato.door_number]: dato.is_open }))
+      if (dato.door === 'entrance') {
+        setEstadoTalanqueraEntrada(Boolean(dato.is_open))
+      } else if (dato.door === 'exit') {
+        setEstadoTalanqueraSalida(Boolean(dato.is_open))
+      }
       insertarEventoEnVivo({
         event_type: 'door_update',
-        description: `talanquera ${dato.door_number} ${dato.is_open ? 'abierta' : 'cerrada'}`,
+        description: `talanquera ${dato.door === 'entrance' ? 'entrada' : 'salida'} ${dato.is_open ? 'abierta' : 'cerrada'}`,
         timestamp: dato.timestamp,
       })
     }
@@ -119,20 +126,21 @@ function PaginaPanel() {
       })
     }
 
-    socket.on('parking_update', handleParkingUpdate)
-    socket.on('gas_update', handleGasUpdate)
-    socket.on('ventilator_update', handleVentilatorUpdate)
-    socket.on('door_update', handleDoorUpdate)
-    socket.on('emergency_alert', handleEmergencyAlert)
-    socket.on('system_status', handleSystemStatus)
+    clienteMqtt.on('parking_update', handleParkingUpdate)
+    clienteMqtt.on('gas_update', handleGasUpdate)
+    clienteMqtt.on('ventilator_update', handleVentilatorUpdate)
+    clienteMqtt.on('door_update', handleDoorUpdate)
+    clienteMqtt.on('emergency_alert', handleEmergencyAlert)
+    clienteMqtt.on('system_status', handleSystemStatus)
 
     return () => {
-      socket.off('parking_update', handleParkingUpdate)
-      socket.off('gas_update', handleGasUpdate)
-      socket.off('ventilator_update', handleVentilatorUpdate)
-      socket.off('door_update', handleDoorUpdate)
-      socket.off('emergency_alert', handleEmergencyAlert)
-      socket.off('system_status', handleSystemStatus)
+      clienteMqtt.off('parking_update', handleParkingUpdate)
+      clienteMqtt.off('gas_update', handleGasUpdate)
+      clienteMqtt.off('ventilator_update', handleVentilatorUpdate)
+      clienteMqtt.off('door_update', handleDoorUpdate)
+      clienteMqtt.off('emergency_alert', handleEmergencyAlert)
+      clienteMqtt.off('system_status', handleSystemStatus)
+      desconectarMqtt()
     }
   }, [])
 
@@ -251,6 +259,41 @@ function PaginaPanel() {
     }
   }
 
+  async function cargarSaldoUsuario(idUsuario, monto) {
+    if (!monto || monto <= 0) {
+      setError('ingresa un monto válido')
+      return
+    }
+
+    setError('')
+    try {
+      await solicitarApi('patch', `/api/users/${idUsuario}/balance`, {
+        amount: parseFloat(monto),
+      })
+      setMensaje(`saldo cargado: +Q${monto}`)
+      setUsuarioParaSaldo(null)
+      setMontoSaldo('')
+      await cargarDatosIniciales()
+      setTimeout(() => setMensaje(''), 3000)
+    } catch (errorPeticion) {
+      setError((errorPeticion?.response?.data?.message || 'no se pudo cargar saldo').toLowerCase())
+    }
+  }
+
+  async function reiniciarSaldoUsuario(idUsuario) {
+    setError('')
+    try {
+      await solicitarApi('patch', `/api/users/${idUsuario}/balance/reset`)
+      setMensaje('saldo reiniciado a Q5.00')
+      setUsuarioParaSaldo(null)
+      setMontoSaldo('')
+      await cargarDatosIniciales()
+      setTimeout(() => setMensaje(''), 3000)
+    } catch (errorPeticion) {
+      setError((errorPeticion?.response?.data?.message || 'no se pudo reiniciar saldo').toLowerCase())
+    }
+  }
+
   async function cambiarEstadoEspacio(numeroEspacio, habilitado) {
     setError('')
     try {
@@ -264,14 +307,8 @@ function PaginaPanel() {
     }
   }
 
-  async function enviarComando(ruta) {
-    setError('')
-    try {
-      await solicitarApi('post', ruta)
-      await cargarDatosIniciales()
-    } catch (errorPeticion) {
-      setError((errorPeticion?.response?.data?.message || 'no se pudo enviar comando').toLowerCase())
-    }
+  function crearTimestamp() {
+    return new Date().toISOString()
   }
 
   function salir() {
@@ -414,10 +451,26 @@ function PaginaPanel() {
                 </span>
               </div>
               <div className="fila-botones">
-                <button disabled={estadoVentilador} onClick={() => enviarComando('/api/commands/fan/activate')}>
+                <button
+                  disabled={estadoVentilador}
+                  onClick={() =>
+                    enviarComando('park-guard/commands/fan', {
+                      command: 'activate_fan',
+                      timestamp: crearTimestamp(),
+                    })
+                  }
+                >
                   encender
                 </button>
-                <button disabled={!estadoVentilador} onClick={() => enviarComando('/api/commands/fan/deactivate')}>
+                <button
+                  disabled={!estadoVentilador}
+                  onClick={() =>
+                    enviarComando('park-guard/commands/fan', {
+                      command: 'deactivate_fan',
+                      timestamp: crearTimestamp(),
+                    })
+                  }
+                >
                   apagar
                 </button>
               </div>
@@ -425,42 +478,92 @@ function PaginaPanel() {
 
             <div className="tarjeta-accion-remota">
               <div className="encabezado-accion-remota">
-                <div className="titulo-accion-remota">🚨 emergencia</div>
-                <span className={`insignia-estado ${estadoEmergencia ? 'alerta' : 'normal'}`}>
-                  {estadoEmergencia ? 'activa' : 'normal'}
+                <div className="titulo-accion-remota">� talanquera entrada</div>
+                <span className={`insignia-estado ${estadoTalanqueraEntrada ? 'activo' : 'normal'}`}>
+                  {estadoTalanqueraEntrada ? 'abierta' : 'cerrada'}
                 </span>
               </div>
               <div className="fila-botones">
-                <button disabled={estadoEmergencia} onClick={() => enviarComando('/api/commands/emergency/activate')}>
-                  activar
+                <button
+                  disabled={estadoTalanqueraEntrada}
+                  onClick={() =>
+                    solicitarApi('post', '/api/commands/door/entrance/open').catch(() =>
+                      setError('no se pudo abrir talanquera'),
+                    )
+                  }
+                >
+                  abrir
                 </button>
-                <button disabled={!estadoEmergencia} onClick={() => enviarComando('/api/commands/emergency/deactivate')}>
-                  desactivar
+                <button
+                  disabled={!estadoTalanqueraEntrada}
+                  onClick={() =>
+                    solicitarApi('post', '/api/commands/door/entrance/close').catch(() =>
+                      setError('no se pudo cerrar talanquera'),
+                    )
+                  }
+                >
+                  cerrar
+                </button>
+              </div>
+            </div>
+
+            <div className="tarjeta-accion-remota">
+              <div className="encabezado-accion-remota">
+                <div className="titulo-accion-remota">🚪 talanquera salida</div>
+                <span className={`insignia-estado ${estadoTalanqueraSalida ? 'activo' : 'normal'}`}>
+                  {estadoTalanqueraSalida ? 'abierta' : 'cerrada'}
+                </span>
+              </div>
+              <div className="fila-botones">
+                <button
+                  disabled={estadoTalanqueraSalida}
+                  onClick={() =>
+                    solicitarApi('post', '/api/commands/door/exit/open').catch(() =>
+                      setError('no se pudo abrir talanquera'),
+                    )
+                  }
+                >
+                  abrir
+                </button>
+                <button
+                  disabled={!estadoTalanqueraSalida}
+                  onClick={() =>
+                    solicitarApi('post', '/api/commands/door/exit/close').catch(() =>
+                      setError('no se pudo cerrar talanquera'),
+                    )
+                  }
+                >
+                  cerrar
                 </button>
               </div>
             </div>
           </div>
 
           <div className="lista-espacios-control">
-            {espacios.map((espacio) => (
-              <div key={espacio.id || espacio.space_number} className="item-espacio-control">
-                <div className="info-espacio-control">
-                  <strong>espacio {espacio.space_number}</strong>
-                  <span className={`insignia-estado ${espacio.is_occupied ? 'alerta' : 'activo'}`}>
-                    {espacio.is_occupied ? 'ocupado' : 'libre'}
-                  </span>
-                  <span className={`insignia-estado ${espacio.is_enabled ? 'activo' : 'inactivo'}`}>
-                    {espacio.is_enabled ? 'habilitado' : 'mantenimiento'}
-                  </span>
-                  <span className="insignia-estado normal">
-                    {estadoPuertas[espacio.space_number] ? 'talanquera abierta' : 'talanquera cerrada'}
-                  </span>
+            {espacios.map((espacio) => {
+              return (
+                <div key={espacio.id || espacio.space_number} className="item-espacio-control">
+                  <div className="info-espacio-control">
+                    <strong>espacio {espacio.space_number}</strong>
+                    <span className={`insignia-estado ${espacio.is_occupied ? 'alerta' : 'activo'}`}>
+                      {espacio.is_occupied ? 'ocupado' : 'libre'}
+                    </span>
+                    <span className={`insignia-estado ${espacio.is_enabled ? 'activo' : 'inactivo'}`}>
+                      {espacio.is_enabled ? 'habilitado' : 'mantenimiento'}
+                    </span>
+                  </div>
+
+                  <div className="acciones-espacio-control">
+                    <button
+                      className="boton-control-espacio"
+                      onClick={() => cambiarEstadoEspacio(espacio.space_number, espacio.is_enabled)}
+                    >
+                      {espacio.is_enabled ? 'deshabilitar espacio' : 'habilitar espacio'}
+                    </button>
+                  </div>
                 </div>
-                <button onClick={() => cambiarEstadoEspacio(espacio.space_number, espacio.is_enabled)}>
-                  {espacio.is_enabled ? 'deshabilitar' : 'habilitar'}
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
@@ -514,6 +617,7 @@ function PaginaPanel() {
               <div className="fila-tabla fila-usuario" key={usuario.id}>
                 <span>{usuario.name}</span>
                 <span>{usuario.rfid_card}</span>
+                <span className={usuario.balance < 20 ? 'texto-alerta' : ''}>{usuario.balance ? `Q ${usuario.balance.toFixed(2)}` : 'Q 0.00'}</span>
                 <span>{usuario.is_active ? 'activo' : 'inactivo'}</span>
                 <span>accesos: {usuario.access_count || 0}</span>
                 <div className="fila-botones fila-botones-compacta">
@@ -521,9 +625,27 @@ function PaginaPanel() {
                   <button onClick={() => cambiarEstadoUsuario(usuario.id, usuario.is_active)}>
                     {usuario.is_active ? 'desactivar' : 'activar'}
                   </button>
+                  <button onClick={() => setUsuarioParaSaldo(usuario.id)}>💰 saldo</button>
                   <button onClick={() => cargarHistorialUsuario(usuario.id)}>historial</button>
                   <button onClick={() => eliminarUsuario(usuario.id)}>eliminar</button>
                 </div>
+                {usuarioParaSaldo === usuario.id && (
+                  <div className="formulario-carga-saldo">
+                    <input
+                      type="number"
+                      placeholder="cantidad (Q)"
+                      value={montoSaldo}
+                      onChange={(e) => setMontoSaldo(e.target.value)}
+                      min="1"
+                      step="0.50"
+                    />
+                    <button onClick={() => cargarSaldoUsuario(usuario.id, montoSaldo)}>cargar</button>
+                    <button className="boton-reiniciar-saldo" onClick={() => reiniciarSaldoUsuario(usuario.id)}>
+                      reiniciar Q5
+                    </button>
+                    <button onClick={() => setUsuarioParaSaldo(null)}>cancelar</button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -100,7 +100,7 @@ void setup() {
   digitalWrite(53, HIGH);
 
   //LCD 
-  lcd.init(); 
+  lcd.init();
   lcd.backlight();
   lcd.clear();
 

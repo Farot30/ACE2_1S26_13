@@ -160,3 +160,60 @@ class UserService:
                 '$set': {'last_access': datetime.utcnow()}
             }
         )
+    
+    @staticmethod
+    def update_balance(user_id, amount):
+        """
+        Cargar saldo a un usuario
+        
+        Args:
+            user_id: ID del usuario
+            amount: Cantidad a agregar (ej: 100.0)
+            
+        Returns:
+            (success: bool, message: str)
+        """
+        db = get_db()
+        
+        try:
+            # Verificar que amount es positivo
+            if not isinstance(amount, (int, float)) or amount <= 0:
+                return False, "La cantidad debe ser un número positivo"
+            
+            result = db.users.update_one(
+                {'_id': ObjectId(user_id)},
+                {
+                    '$inc': {'balance': float(amount)},
+                    '$set': {'updated_at': datetime.utcnow()}
+                }
+            )
+            
+            if result.matched_count == 0:
+                return False, "Usuario no encontrado"
+            
+            return True, f"Saldo cargado: +Q{amount}"
+        except Exception as e:
+            return False, str(e)
+
+    @staticmethod
+    def reset_balance(user_id, target_balance=5.0):
+        """Reiniciar saldo del usuario a un valor fijo (default Q5)."""
+        db = get_db()
+
+        try:
+            result = db.users.update_one(
+                {'_id': ObjectId(user_id)},
+                {
+                    '$set': {
+                        'balance': float(target_balance),
+                        'updated_at': datetime.utcnow()
+                    }
+                }
+            )
+
+            if result.matched_count == 0:
+                return False, "Usuario no encontrado"
+
+            return True, f"Saldo reiniciado a Q{float(target_balance):.2f}"
+        except Exception as e:
+            return False, str(e)

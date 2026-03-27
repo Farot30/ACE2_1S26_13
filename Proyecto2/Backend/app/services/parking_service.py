@@ -3,6 +3,7 @@ from bson.objectid import ObjectId
 from app import get_db
 from app.models import ParkingSpace, Event
 from datetime import datetime
+from app.services.mqtt_service import MQTTService
 
 class ParkingService:
     """Servicio para lógica de espacios de parqueo"""
@@ -142,6 +143,20 @@ class ParkingService:
                 description=f"Espacio {space_number} habilitado"
             )
             db.events.insert_one(event)
+
+            try:
+                mqtt = MQTTService()
+                mqtt.publish(
+                    f"/park-guard/commands/barrier/{space_number}",
+                    {
+                        'command': 'open_barrier',
+                        'space': space_number,
+                        'timestamp': datetime.utcnow().isoformat()
+                    },
+                    qos=1
+                )
+            except Exception:
+                pass
             
             return True, "Espacio habilitado"
         except Exception as e:
@@ -168,6 +183,20 @@ class ParkingService:
                 description=f"Espacio {space_number} deshabilitado"
             )
             db.events.insert_one(event)
+
+            try:
+                mqtt = MQTTService()
+                mqtt.publish(
+                    f"/park-guard/commands/barrier/{space_number}",
+                    {
+                        'command': 'close_barrier',
+                        'space': space_number,
+                        'timestamp': datetime.utcnow().isoformat()
+                    },
+                    qos=1
+                )
+            except Exception:
+                pass
             
             return True, "Espacio deshabilitado"
         except Exception as e:

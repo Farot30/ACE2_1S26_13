@@ -50,6 +50,8 @@ TOPICS_MQTT = {
     'ventilator': 'park-guard/ventilator/command',
 }
 
+COBRO_POR_INGRESO = 1.0
+
 # Variables globales para Socket.IO
 # Se inicializarán cuando se importe desde main.py
 socketio_instance = None
@@ -162,6 +164,8 @@ class ConsumerMQTT:
                 self._procesar_emergency(payload)
             elif 'ventilator' in topic:
                 self._procesar_ventilador(payload)
+            elif 'doors' in topic or 'door_update' in topic:
+                self._procesar_puerta(payload)
             
             logger.info(f"Procesado {topic}: {payload}")
         except json.JSONDecodeError:
@@ -184,16 +188,17 @@ class ConsumerMQTT:
             return
         
         # Actualizar en MongoDB
-        self.db.parking_spaces.update_one(
-            {'space_number': space_number},
-            {
-                '$set': {
-                    'is_occupied': is_occupied,
-                    'last_updated': timestamp
-                }
-            },
-            upsert=True
-        )
+        if not self.socketio:
+            self.db.parking_spaces.update_one(
+                {'space_number': space_number},
+                {
+                    '$set': {
+                        'is_occupied': is_occupied,
+                        'last_updated': timestamp
+                    }
+                },
+                upsert=True
+            )
         
         # Emitir Socket.IO al Frontend
         if self.socketio:
@@ -218,11 +223,12 @@ class ConsumerMQTT:
         timestamp = payload.get('timestamp', datetime.utcnow().isoformat())
         
         # Guardar estadística en MongoDB
-        self.db.statistics.insert_one({
-            'type': 'gas_reading',
-            'ppm': ppm,
-            'timestamp': timestamp
-        })
+        if not self.socketio:
+            self.db.statistics.insert_one({
+                'type': 'gas_reading',
+                'ppm': ppm,
+                'timestamp': timestamp
+            })
         
         # Emitir Socket.IO
         if self.socketio:
@@ -251,27 +257,85 @@ class ConsumerMQTT:
         
         # Buscar usuario con esta tarjeta
         usuario = self.db.users.find_one({'rfid_card': card_id})
-        
+        access_granted = False
+
         if usuario:
-            # Crear evento de lectura exitosa
-            self.db.events.insert_one({
-                'event_type': 'rfid_read',
-                'user_id': str(usuario.get('_id')),
-                'user_name': usuario.get('name'),
-                'rfid_card': card_id,
-                'access_granted': True,
-                'timestamp': timestamp,
-                'description': f"RFID leída: {usuario.get('name')}"
-            })
-            logger.info(f"RFID válida: {usuario.get('name')}")
+            balance_actual = float(usuario.get('balance', 5.0))
+            activo = bool(usuario.get('is_active', True))
+
+            if not activo:
+                razon = 'tarjeta desactivada'
+            elif balance_actual < COBRO_POR_INGRESO:
+                razon = 'saldo insuficiente'
+            else:
+                access_granted = True
+                nuevo_saldo = round(balance_actual - COBRO_POR_INGRESO, 2)
+
+                if not self.socketio:
+                    self.db.users.update_one(
+                        {'_id': usuario.get('_id')},
+                        {
+                            '$set': {
+                                'balance': nuevo_saldo,
+                                'last_access': datetime.utcnow(),
+                                'updated_at': datetime.utcnow()
+                            },
+                            '$inc': {'access_count': 1}
+                        }
+                    )
+
+                    self.db.events.insert_one({
+                        'event_type': 'access_granted',
+                        'user_id': usuario.get('_id'),
+                        'space_id': None,
+                        'description': f"Acceso concedido a {usuario.get('name')} (cobro Q1.00)",
+                        'data': {
+                            'rfid_card': card_id,
+                            'charged': COBRO_POR_INGRESO,
+                            'balance_before': balance_actual,
+                            'balance_after': nuevo_saldo,
+                        },
+                        'timestamp': datetime.utcnow(),
+                        'resolved': False
+                    })
+                logger.info(f"RFID válida: {usuario.get('name')} | saldo {balance_actual:.2f} -> {nuevo_saldo:.2f}")
+
+            if not access_granted:
+                if not self.socketio:
+                    self.db.events.insert_one({
+                        'event_type': 'access_denied',
+                        'user_id': usuario.get('_id'),
+                        'space_id': None,
+                        'description': f"Acceso denegado a {usuario.get('name')}: {razon}",
+                        'data': {
+                            'rfid_card': card_id,
+                            'reason': razon,
+                            'balance': balance_actual,
+                        },
+                        'timestamp': datetime.utcnow(),
+                        'resolved': False
+                    })
+                logger.warning(f"RFID denegada: {usuario.get('name')} ({razon})")
         else:
-            # Crear evento de acceso denegado
-            self.db.suspicious_activity.insert_one({
-                'type': 'rfid_read_denied',
-                'rfid_card': card_id,
-                'timestamp': timestamp,
-                'description': f"Intento con tarjeta no autorizada: {card_id}"
-            })
+            if not self.socketio:
+                self.db.events.insert_one({
+                    'event_type': 'access_denied',
+                    'user_id': None,
+                    'space_id': None,
+                    'description': f"Acceso denegado con tarjeta no autorizada: {card_id}",
+                    'data': {
+                        'rfid_card': card_id,
+                        'reason': 'tarjeta no autorizada',
+                    },
+                    'timestamp': datetime.utcnow(),
+                    'resolved': False
+                })
+                self.db.suspicious_activity.insert_one({
+                    'type': 'rfid_read_denied',
+                    'rfid_card': card_id,
+                    'timestamp': timestamp,
+                    'description': f"Intento con tarjeta no autorizada: {card_id}"
+                })
             logger.warning(f"RFID desconocida: {card_id}")
         
         # Emitir Socket.IO
@@ -279,7 +343,7 @@ class ConsumerMQTT:
             try:
                 self.socketio.emit('rfid_event', {
                     'card_id': card_id,
-                    'authorized': bool(usuario),
+                    'authorized': access_granted,
                     'user_name': usuario.get('name') if usuario else 'Desconocido',
                     'timestamp': timestamp
                 }, room='parking-updates')
@@ -295,12 +359,13 @@ class ConsumerMQTT:
         timestamp = payload.get('timestamp', datetime.utcnow().isoformat())
         
         # Registrar evento de emergencia
-        self.db.events.insert_one({
-            'event_type': 'emergency_alert',
-            'timestamp': timestamp,
-            'description': 'Alerta de emergencia activada en todo el parqueo',
-            'is_active': True
-        })
+        if not self.socketio:
+            self.db.events.insert_one({
+                'event_type': 'emergency_alert',
+                'timestamp': timestamp,
+                'description': 'Alerta de emergencia activada en todo el parqueo',
+                'is_active': True
+            })
         
         # Emitir Socket.IO
         if self.socketio:
@@ -326,12 +391,13 @@ class ConsumerMQTT:
         timestamp = payload.get('timestamp', datetime.utcnow().isoformat())
         
         # Actualizar estadísticas
-        self.db.statistics.insert_one({
-            'type': 'ventilator_status',
-            'is_active': is_active,
-            'gas_level': gas_level,
-            'timestamp': timestamp
-        })
+        if not self.socketio:
+            self.db.statistics.insert_one({
+                'type': 'ventilator_status',
+                'is_active': is_active,
+                'gas_level': gas_level,
+                'timestamp': timestamp
+            })
         
         # Emitir Socket.IO
         if self.socketio:
@@ -346,6 +412,44 @@ class ConsumerMQTT:
                 logger.error(f"Error Socket.IO ventilador: {e}")
         
         logger.info(f"Ventilador: {'Encendido' if is_active else 'Apagado'}")
+    
+    def _procesar_puerta(self, payload):
+        """
+        Procesar estado de talanqueras (puertas entrada/salida)
+        Payload: {"type": "door_update", "door": "entrance", "is_open": true, "timestamp": "..."}
+        """
+        door = payload.get('door')  # 'entrance' o 'exit'
+        is_open = payload.get('is_open', False)
+        timestamp = payload.get('timestamp', datetime.utcnow().isoformat())
+        
+        if not door:
+            logger.warning(f"Door no definido en payload: {payload}")
+            return
+        
+        # Guardar evento de puerta en MongoDB
+        if not self.socketio:
+            self.db.events.insert_one({
+                'event_type': 'door_update',
+                'door': door,
+                'is_open': is_open,
+                'description': f"Talanquera {door} {'abierta' if is_open else 'cerrada'}",
+                'timestamp': datetime.utcnow(),
+                'resolved': False
+            })
+        
+        # Emitir Socket.IO
+        if self.socketio:
+            try:
+                self.socketio.emit('door_update', {
+                    'door': door,
+                    'is_open': is_open,
+                    'timestamp': timestamp
+                }, room='parking-updates')
+                logger.info(f"Socket.IO: door_update {door}")
+            except Exception as e:
+                logger.error(f"Error Socket.IO puerta: {e}")
+        
+        logger.info(f"Talanquera {door}: {'Abierta' if is_open else 'Cerrada'}")
     
     def desconectar(self):
         """Desconectar de MQTT y MongoDB"""

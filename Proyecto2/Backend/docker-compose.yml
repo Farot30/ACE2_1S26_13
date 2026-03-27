@@ -34,7 +34,7 @@ services:
     networks:
       - park-guard-network
     healthcheck:
-      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "health/check", "-m", "ping"]
+      test: [ "CMD", "mosquitto_pub", "-h", "localhost", "-t", "health/check", "-m", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -98,7 +98,7 @@ services:
     container_name: park-guard-frontend
     environment:
       VITE_API_URL: http://localhost:5000
-      VITE_SOCKET_URL: http://localhost:5000
+      VITE_MQTT_URL: ws://localhost:9001
     ports:
       - "3000:3000"
     depends_on:
@@ -111,6 +111,7 @@ volumes:
   mongodb_data:
   mosquitto_data:
   mosquitto_logs:
+
 
 networks:
   park-guard-network:

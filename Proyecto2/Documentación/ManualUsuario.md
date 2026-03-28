@@ -144,13 +144,7 @@ Si la validación falla, verá:
 
 ## 6. Monitoreo en Tiempo Real
 
-### Sección: Parqueo
-
-Acceda haciendo clic en la pestaña **"Parqueo"** en la barra de navegación.
-
-**[ESPACIO PARA CAPTURA: Sección Parqueo]**
-
-### Ver Ocupación de Espacios
+### Ocupación de Espacios
 
 En esta sección podrá:
 

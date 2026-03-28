@@ -106,35 +106,96 @@ def deactivate_emergency(admin_id, email):
         return create_error_response(f"Error: {str(e)}", 500)
 
 
-@bp.route('/barrier/<int:space_number>', methods=['POST'])
+@bp.route('/door/entrance/open', methods=['POST'])
 @token_required
-def control_barrier(space_number, admin_id, email):
-    """Controlar barrera de estacionamiento"""
-    
-    if space_number < 1 or space_number > 5:
-        return create_error_response("Número de espacio debe estar entre 1 y 5", 400)
-    
-    data = request.get_json() or {}
-    action = data.get('action', 'open')  # open o close
-    
-    if action not in ['open', 'close']:
-        return create_error_response("Acción debe ser 'open' o 'close'", 400)
-    
+def open_entrance(admin_id, email):
+    """Abrir talanquera de entrada"""
     try:
         mqtt = get_mqtt_service()
         
         payload = {
-            'command': f'{action}_barrier',
-            'space_number': space_number,
+            'command': 'open_door',
+            'door': 'entrance',
             'triggered_by': email,
             'timestamp': str(__import__('datetime').datetime.utcnow())
         }
         
-        mqtt.publish(f'/park-guard/commands/barrier/{space_number}', payload, qos=1)
+        mqtt.publish('/park-guard/commands/door/entrance', payload, qos=1)
         
-        message = f"Barrera {space_number} {'abierta' if action == 'open' else 'cerrada'}"
         return create_response(
-            message=f"Comando enviado: {message}",
+            message="Comando enviado: talanquera entrada abierta",
+            status_code=200
+        )
+    except Exception as e:
+        return create_error_response(f"Error: {str(e)}", 500)
+
+
+@bp.route('/door/entrance/close', methods=['POST'])
+@token_required
+def close_entrance(admin_id, email):
+    """Cerrar talanquera de entrada"""
+    try:
+        mqtt = get_mqtt_service()
+        
+        payload = {
+            'command': 'close_door',
+            'door': 'entrance',
+            'triggered_by': email,
+            'timestamp': str(__import__('datetime').datetime.utcnow())
+        }
+        
+        mqtt.publish('/park-guard/commands/door/entrance', payload, qos=1)
+        
+        return create_response(
+            message="Comando enviado: talanquera entrada cerrada",
+            status_code=200
+        )
+    except Exception as e:
+        return create_error_response(f"Error: {str(e)}", 500)
+
+
+@bp.route('/door/exit/open', methods=['POST'])
+@token_required
+def open_exit(admin_id, email):
+    """Abrir talanquera de salida"""
+    try:
+        mqtt = get_mqtt_service()
+        
+        payload = {
+            'command': 'open_door',
+            'door': 'exit',
+            'triggered_by': email,
+            'timestamp': str(__import__('datetime').datetime.utcnow())
+        }
+        
+        mqtt.publish('/park-guard/commands/door/exit', payload, qos=1)
+        
+        return create_response(
+            message="Comando enviado: talanquera salida abierta",
+            status_code=200
+        )
+    except Exception as e:
+        return create_error_response(f"Error: {str(e)}", 500)
+
+
+@bp.route('/door/exit/close', methods=['POST'])
+@token_required
+def close_exit(admin_id, email):
+    """Cerrar talanquera de salida"""
+    try:
+        mqtt = get_mqtt_service()
+        
+        payload = {
+            'command': 'close_door',
+            'door': 'exit',
+            'triggered_by': email,
+            'timestamp': str(__import__('datetime').datetime.utcnow())
+        }
+        
+        mqtt.publish('/park-guard/commands/door/exit', payload, qos=1)
+        
+        return create_response(
+            message="Comando enviado: talanquera salida cerrada",
             status_code=200
         )
     except Exception as e:

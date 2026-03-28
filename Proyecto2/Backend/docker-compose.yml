@@ -34,14 +34,14 @@ services:
     networks:
       - park-guard-network
     healthcheck:
-      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "health/check", "-m", "ping"]
+      test: [ "CMD", "mosquitto_pub", "-h", "localhost", "-t", "health/check", "-m", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
 
   backend:
-    image: farot33/park-guard-backend:latest
+    image: farot3/park-guard-backend:latest
     container_name: park-guard-backend
     environment:
       FLASK_ENV: production
@@ -67,7 +67,7 @@ services:
     restart: unless-stopped
 
   consumer:
-    image: farot33/park-guard-consumer:latest
+    image: farot3/park-guard-consumer:latest
     container_name: park-guard-consumer
     environment:
       MQTT_BROKER: mosquitto
@@ -94,11 +94,11 @@ services:
         max-file: "3"
 
   frontend:
-    image: farot33/park-guard-frontend:latest
+    image: farot3/park-guard-frontend:latest
     container_name: park-guard-frontend
     environment:
       VITE_API_URL: http://localhost:5000
-      VITE_SOCKET_URL: http://localhost:5000
+      VITE_MQTT_URL: ws://localhost:9001
     ports:
       - "3000:3000"
     depends_on:
@@ -111,6 +111,7 @@ volumes:
   mongodb_data:
   mosquitto_data:
   mosquitto_logs:
+
 
 networks:
   park-guard-network:

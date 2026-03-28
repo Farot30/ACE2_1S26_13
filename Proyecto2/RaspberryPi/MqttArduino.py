@@ -1,16 +1,48 @@
 import json
+import os
 import time
 import serial
 import paho.mqtt.client as mqtt
 
-#Arduino
-PUERTO_SERIAL = "/dev/ttyACM0"
-BAUDRATE_SERIAL = 115200
+def cargar_env(path):
+    if not os.path.exists(path):
+        return
 
-# IP de ejemplo del broker MQTT cambiar
-BROKER_MQTT = "192.168.1.100"
-PUERTO_MQTT = 1883
-KEEPALIVE_MQTT = 60
+    with open(path, "r", encoding="utf-8") as archivo:
+        for linea in archivo:
+            linea = linea.strip()
+            if not linea or linea.startswith("#"):
+                continue
+            if "=" not in linea:
+                continue
+            clave, valor = linea.split("=", 1)
+            clave = clave.strip()
+            valor = valor.strip().strip("\"'")
+            if clave and clave not in os.environ:
+                os.environ[clave] = valor
+
+
+def obtener_entero(clave, default):
+    valor = os.environ.get(clave)
+    if valor is None:
+        return default
+    try:
+        return int(valor)
+    except ValueError:
+        return default
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+cargar_env(os.path.join(BASE_DIR, ".env"))
+
+# Arduino
+PUERTO_SERIAL = os.environ.get("PUERTO_SERIAL", "/dev/ttyACM0")
+BAUDRATE_SERIAL = obtener_entero("BAUDRATE_SERIAL", 115200)
+
+# IP del broker MQTT
+BROKER_MQTT = os.environ.get("BROKER_MQTT", "192.168.1.100")
+PUERTO_MQTT = obtener_entero("PUERTO_MQTT", 1883)
+KEEPALIVE_MQTT = obtener_entero("KEEPALIVE_MQTT", 60)
 
 # Topics esperados por el backend (consumer_mqtt.py)
 TOPICO_PARQUEO = "park-guard/parking/{space}/status"

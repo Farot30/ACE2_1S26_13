@@ -51,14 +51,19 @@ def create_app(config_name=None):
     from app.websocket import register_socketio_events
     register_socketio_events(socketio)
     
-    # Inicializar Consumer MQTT (escucha sensores y emite Socket.IO)
-    from consumer_mqtt import iniciar_consumer_mqtt
-    try:
-        iniciar_consumer_mqtt(app, socketio)
-        print("Consumer MQTT iniciado: Escuchando eventos MQTT")
-    except Exception as e:
-        print(f"Consumer MQTT no disponible: {e}")
-        print("El Backend funcionará, pero sin eventos en tiempo real")
+    # Consumer embebido desactivado por defecto para evitar doble consumidor.
+    # Activar solo si ENABLE_EMBEDDED_CONSUMER=true
+    enable_embedded_consumer = os.getenv('ENABLE_EMBEDDED_CONSUMER', 'false').lower() == 'true'
+    if enable_embedded_consumer:
+        from consumer_mqtt import iniciar_consumer_mqtt
+        try:
+            iniciar_consumer_mqtt(app, socketio)
+            print("Consumer MQTT embebido iniciado")
+        except Exception as e:
+            print(f"Consumer MQTT embebido no disponible: {e}")
+            print("Backend seguirá funcionando sin consumer embebido")
+    else:
+        print("Consumer MQTT embebido desactivado (ENABLE_EMBEDDED_CONSUMER=false)")
     
     # Ruta de health check
     @app.route('/api/health', methods=['GET'])

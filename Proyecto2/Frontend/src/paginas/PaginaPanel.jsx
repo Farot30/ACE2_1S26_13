@@ -106,10 +106,13 @@ function PaginaPanel() {
     }
 
     const handleEmergencyAlert = (dato) => {
-      setEstadoEmergencia(true)
+      const activa = typeof dato.is_active === 'boolean' ? dato.is_active : true
+      setEstadoEmergencia(activa)
       insertarEventoEnVivo({
-        event_type: 'emergency_alert',
-        description: `alerta ${dato.alert_type || 'emergencia'} en ${dato.location || 'zona general'}`,
+        event_type: activa ? 'emergency_alert' : 'emergency_cleared',
+        description: activa
+          ? `alerta ${dato.alert_type || 'emergencia'} en ${dato.location || 'zona general'}`
+          : 'alerta de emergencia desactivada',
         timestamp: dato.timestamp,
       })
     }
@@ -311,6 +314,52 @@ function PaginaPanel() {
     return new Date().toISOString()
   }
 
+  async function accionarVentilador(activar) {
+    setError('')
+    try {
+      await solicitarApi('post', activar ? '/api/commands/fan/activate' : '/api/commands/fan/deactivate')
+      setEstadoVentilador(activar)
+      setMensaje(activar ? 'ventilador encendido' : 'ventilador apagado')
+      setTimeout(() => setMensaje(''), 2000)
+    } catch (errorPeticion) {
+      setError((errorPeticion?.response?.data?.message || 'no se pudo cambiar ventilador').toLowerCase())
+    }
+  }
+
+  async function accionarTalanquera(tipo, abrir) {
+    setError('')
+    try {
+      const ruta = tipo === 'entrance'
+        ? (abrir ? '/api/commands/door/entrance/open' : '/api/commands/door/entrance/close')
+        : (abrir ? '/api/commands/door/exit/open' : '/api/commands/door/exit/close')
+
+      await solicitarApi('post', ruta)
+
+      if (tipo === 'entrance') {
+        setEstadoTalanqueraEntrada(abrir)
+      } else {
+        setEstadoTalanqueraSalida(abrir)
+      }
+
+      setMensaje(`talanquera ${tipo === 'entrance' ? 'entrada' : 'salida'} ${abrir ? 'abierta' : 'cerrada'}`)
+      setTimeout(() => setMensaje(''), 2000)
+    } catch (errorPeticion) {
+      setError((errorPeticion?.response?.data?.message || 'no se pudo accionar talanquera').toLowerCase())
+    }
+  }
+
+  async function accionarEmergencia(activar) {
+    setError('')
+    try {
+      await solicitarApi('post', activar ? '/api/commands/emergency/activate' : '/api/commands/emergency/deactivate')
+      setEstadoEmergencia(activar)
+      setMensaje(activar ? 'emergencia activada' : 'emergencia desactivada')
+      setTimeout(() => setMensaje(''), 2000)
+    } catch (errorPeticion) {
+      setError((errorPeticion?.response?.data?.message || 'no se pudo cambiar emergencia').toLowerCase())
+    }
+  }
+
   function salir() {
     cerrarSesion()
     window.location.href = '/ingreso'
@@ -453,23 +502,13 @@ function PaginaPanel() {
               <div className="fila-botones">
                 <button
                   disabled={estadoVentilador}
-                  onClick={() =>
-                    enviarComando('park-guard/commands/fan', {
-                      command: 'activate_fan',
-                      timestamp: crearTimestamp(),
-                    })
-                  }
+                  onClick={() => accionarVentilador(true)}
                 >
                   encender
                 </button>
                 <button
                   disabled={!estadoVentilador}
-                  onClick={() =>
-                    enviarComando('park-guard/commands/fan', {
-                      command: 'deactivate_fan',
-                      timestamp: crearTimestamp(),
-                    })
-                  }
+                  onClick={() => accionarVentilador(false)}
                 >
                   apagar
                 </button>
@@ -478,7 +517,24 @@ function PaginaPanel() {
 
             <div className="tarjeta-accion-remota">
               <div className="encabezado-accion-remota">
-                <div className="titulo-accion-remota">� talanquera entrada</div>
+                <div className="titulo-accion-remota">🚨 emergencia</div>
+                <span className={`insignia-estado ${estadoEmergencia ? 'alerta' : 'ok'}`}>
+                  {estadoEmergencia ? 'activa' : 'normal'}
+                </span>
+              </div>
+              <div className="fila-botones">
+                <button disabled={estadoEmergencia} onClick={() => accionarEmergencia(true)}>
+                  activar
+                </button>
+                <button disabled={!estadoEmergencia} onClick={() => accionarEmergencia(false)}>
+                  desactivar
+                </button>
+              </div>
+            </div>
+
+            <div className="tarjeta-accion-remota">
+              <div className="encabezado-accion-remota">
+                <div className="titulo-accion-remota">  talanquera entrada</div>
                 <span className={`insignia-estado ${estadoTalanqueraEntrada ? 'activo' : 'normal'}`}>
                   {estadoTalanqueraEntrada ? 'abierta' : 'cerrada'}
                 </span>
@@ -486,21 +542,13 @@ function PaginaPanel() {
               <div className="fila-botones">
                 <button
                   disabled={estadoTalanqueraEntrada}
-                  onClick={() =>
-                    solicitarApi('post', '/api/commands/door/entrance/open').catch(() =>
-                      setError('no se pudo abrir talanquera'),
-                    )
-                  }
+                  onClick={() => accionarTalanquera('entrance', true)}
                 >
                   abrir
                 </button>
                 <button
                   disabled={!estadoTalanqueraEntrada}
-                  onClick={() =>
-                    solicitarApi('post', '/api/commands/door/entrance/close').catch(() =>
-                      setError('no se pudo cerrar talanquera'),
-                    )
-                  }
+                  onClick={() => accionarTalanquera('entrance', false)}
                 >
                   cerrar
                 </button>
@@ -517,21 +565,13 @@ function PaginaPanel() {
               <div className="fila-botones">
                 <button
                   disabled={estadoTalanqueraSalida}
-                  onClick={() =>
-                    solicitarApi('post', '/api/commands/door/exit/open').catch(() =>
-                      setError('no se pudo abrir talanquera'),
-                    )
-                  }
+                  onClick={() => accionarTalanquera('exit', true)}
                 >
                   abrir
                 </button>
                 <button
                   disabled={!estadoTalanqueraSalida}
-                  onClick={() =>
-                    solicitarApi('post', '/api/commands/door/exit/close').catch(() =>
-                      setError('no se pudo cerrar talanquera'),
-                    )
-                  }
+                  onClick={() => accionarTalanquera('exit', false)}
                 >
                   cerrar
                 </button>

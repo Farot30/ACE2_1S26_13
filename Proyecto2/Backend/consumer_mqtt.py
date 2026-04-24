@@ -48,6 +48,7 @@ TOPICS_MQTT = {
     'rfid':      'park-guard/rfid/read',
     'emergency': 'park-guard/emergency/trigger',
     'ventilator': 'park-guard/ventilator/command',
+    'events':    'park-guard/events',
 }
 
 COBRO_POR_INGRESO = 1.0
@@ -164,6 +165,21 @@ class ConsumerMQTT:
                 self._procesar_emergency(payload)
             elif 'ventilator' in topic:
                 self._procesar_ventilador(payload)
+            elif topic == 'park-guard/events':
+                accion = payload.get('action')
+                if accion in ('emergency_on', 'emergency_off'):
+                    self._procesar_emergency({
+                        'type': 'emergency',
+                        'is_active': accion == 'emergency_on',
+                        'timestamp': payload.get('timestamp', datetime.utcnow().isoformat())
+                    })
+                elif accion == 'door_update':
+                    self._procesar_puerta({
+                        'type': 'door_update',
+                        'door': payload.get('door'),
+                        'is_open': payload.get('is_open', False),
+                        'timestamp': payload.get('timestamp', datetime.utcnow().isoformat())
+                    })
             elif 'doors' in topic or 'door_update' in topic:
                 self._procesar_puerta(payload)
             
@@ -270,51 +286,60 @@ class ConsumerMQTT:
             else:
                 access_granted = True
                 nuevo_saldo = round(balance_actual - COBRO_POR_INGRESO, 2)
-
-                if not self.socketio:
-                    self.db.users.update_one(
-                        {'_id': usuario.get('_id')},
-                        {
-                            '$set': {
-                                'balance': nuevo_saldo,
-                                'last_access': datetime.utcnow(),
-                                'updated_at': datetime.utcnow()
-                            },
-                            '$inc': {'access_count': 1}
-                        }
-                    )
-
-                    self.db.events.insert_one({
-                        'event_type': 'access_granted',
-                        'user_id': usuario.get('_id'),
-                        'space_id': None,
-                        'description': f"Acceso concedido a {usuario.get('name')} (cobro Q1.00)",
-                        'data': {
-                            'rfid_card': card_id,
-                            'charged': COBRO_POR_INGRESO,
-                            'balance_before': balance_actual,
-                            'balance_after': nuevo_saldo,
+        else:
+            razon = 'tarjeta no autorizada'
+        
+        # CRÍTICO: Publicar comando de acceso INMEDIATAMENTE (antes de DB operations)
+        # El Arduino espera respuesta rápida (timeout 3 segundos)
+        user_name = usuario.get('name') if usuario else 'Desconocido'
+        self._publicar_comando_acceso(access_granted, card_id, timestamp, user_name)
+        
+        # Luego hacer operaciones de base de datos (no afecta al Arduino)
+        if usuario:
+            if access_granted and not self.socketio:
+                nuevo_saldo = round(balance_actual - COBRO_POR_INGRESO, 2)
+                self.db.users.update_one(
+                    {'_id': usuario.get('_id')},
+                    {
+                        '$set': {
+                            'balance': nuevo_saldo,
+                            'last_access': datetime.utcnow(),
+                            'updated_at': datetime.utcnow()
                         },
-                        'timestamp': datetime.utcnow(),
-                        'resolved': False
-                    })
+                        '$inc': {'access_count': 1}
+                    }
+                )
+
+                self.db.events.insert_one({
+                    'event_type': 'access_granted',
+                    'user_id': usuario.get('_id'),
+                    'space_id': None,
+                    'description': f"Acceso concedido a {usuario.get('name')} (cobro Q1.00)",
+                    'data': {
+                        'rfid_card': card_id,
+                        'charged': COBRO_POR_INGRESO,
+                        'balance_before': balance_actual,
+                        'balance_after': nuevo_saldo,
+                    },
+                    'timestamp': datetime.utcnow(),
+                    'resolved': False
+                })
                 logger.info(f"RFID válida: {usuario.get('name')} | saldo {balance_actual:.2f} -> {nuevo_saldo:.2f}")
 
-            if not access_granted:
-                if not self.socketio:
-                    self.db.events.insert_one({
-                        'event_type': 'access_denied',
-                        'user_id': usuario.get('_id'),
-                        'space_id': None,
-                        'description': f"Acceso denegado a {usuario.get('name')}: {razon}",
-                        'data': {
-                            'rfid_card': card_id,
-                            'reason': razon,
-                            'balance': balance_actual,
-                        },
-                        'timestamp': datetime.utcnow(),
-                        'resolved': False
-                    })
+            if not access_granted and not self.socketio:
+                self.db.events.insert_one({
+                    'event_type': 'access_denied',
+                    'user_id': usuario.get('_id'),
+                    'space_id': None,
+                    'description': f"Acceso denegado a {usuario.get('name')}: {razon}",
+                    'data': {
+                        'rfid_card': card_id,
+                        'reason': razon,
+                        'balance': balance_actual,
+                    },
+                    'timestamp': datetime.utcnow(),
+                    'resolved': False
+                })
                 logger.warning(f"RFID denegada: {usuario.get('name')} ({razon})")
         else:
             if not self.socketio:
@@ -350,6 +375,40 @@ class ConsumerMQTT:
                 logger.info(f"Socket.IO: rfid_event")
             except Exception as e:
                 logger.error(f"Error Socket.IO rfid: {e}")
+    
+    def _publicar_comando_acceso(self, access_granted, card_id, timestamp, user_name=None):
+        """
+        Publicar comando de acceso al Arduino a través de MQTT
+        Este comando hace que el Arduino abra la talanquera o muestre denegado
+        CRÍTICO: Se llama INMEDIATAMENTE después de validar en BD, antes de inserciones
+        
+        Args:
+            access_granted: bool - Si el acceso fue concedido
+            card_id: str - ID de la tarjeta RFID
+            timestamp: str - Timestamp del evento
+        """
+        try:
+            if self.mqtt_client is None:
+                logger.error("ERROR CRÍTICO: mqtt_client es None, no se puede publicar comando de acceso")
+                return
+            
+            # El Arduino espera recibir este comando en el serial via MqttArduino.py
+            comando = {
+                "cmd": "access",
+                "granted": access_granted,
+                "card_id": card_id,
+                "timestamp": timestamp,
+                "user_name": user_name or "Desconocido"
+            }
+            
+            # Publicar en topic de comandos para que MqttArduino.py lo traduzca al Arduino
+            topic = "park-guard/commands/access"
+            self.mqtt_client.publish(topic, json.dumps(comando), qos=1)
+            
+            estado = "concedido" if access_granted else "denegado"
+            logger.info(f"⚡ COMANDO DE ACCESO PUBLICADO (RÁPIDO): {estado} para {card_id}")
+        except Exception as e:
+            logger.error(f"ERROR al publicar comando de acceso: {e}")
 
     def _procesar_emergency(self, payload):
         """
@@ -357,14 +416,17 @@ class ConsumerMQTT:
         Payload: {"type": "emergency", "timestamp": "..."}
         """
         timestamp = payload.get('timestamp', datetime.utcnow().isoformat())
+        is_active = bool(payload.get('is_active', True))
+        descripcion = 'Alerta de emergencia activada en todo el parqueo' if is_active else 'Alerta de emergencia desactivada'
+        event_type = 'emergency_alert' if is_active else 'emergency_cleared'
         
         # Registrar evento de emergencia
         if not self.socketio:
             self.db.events.insert_one({
-                'event_type': 'emergency_alert',
+                'event_type': event_type,
                 'timestamp': timestamp,
-                'description': 'Alerta de emergencia activada en todo el parqueo',
-                'is_active': True
+                'description': descripcion,
+                'is_active': is_active
             })
         
         # Emitir Socket.IO
@@ -373,13 +435,16 @@ class ConsumerMQTT:
                 self.socketio.emit('emergency_alert', {
                     'alert_type': 'system',
                     'timestamp': timestamp,
-                    'is_active': True
+                    'is_active': is_active
                 }, room='parking-updates')
                 logger.info(f"Socket.IO: emergency_alert")
             except Exception as e:
                 logger.error(f"Error Socket.IO emergencia: {e}")
         
-        logger.warning(f"EMERGENCIA ACTIVADA EN TODO EL PARQUEO")
+        if is_active:
+            logger.warning("EMERGENCIA ACTIVADA EN TODO EL PARQUEO")
+        else:
+            logger.info("EMERGENCIA DESACTIVADA")
     
     def _procesar_ventilador(self, payload):
         """

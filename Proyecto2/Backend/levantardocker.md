@@ -6,7 +6,7 @@ Aquí tienes todo el flujo completo:
 ```bash
 docker login
 # te pedirá:
-# Username: farot3
+# Username: farot33
 # Password: tu contraseña
 ```
 
@@ -16,20 +16,20 @@ docker login
 
 Para el backend (desde la carpeta del backend):
 ```bash
-docker build -t farot3/park-guard-backend:latest -t farot3/park-guard-backend:v1.0 .
-docker push farot3/park-guard-backend --all-tags
+docker build -t farot33/park-guard-backend:latest -t farot33/park-guard-backend:v1.0 .
+docker push farot33/park-guard-backend --all-tags
 ```
 
 Para el consumer (misma carpeta del backend):
 ```bash
-docker build -f Dockerfile.consumer -t farot3/park-guard-consumer:latest -t farot3/park-guard-consumer:v1.0 .
-docker push farot3/park-guard-consumer --all-tags
+docker build -f Dockerfile.consumer -t farot33/park-guard-consumer:latest -t farot33/park-guard-consumer:v1.0 .
+docker push farot33/park-guard-consumer --all-tags
 ```
 
 Para el frontend (desde la carpeta del frontend):
 ```bash
-docker build -t farot3/park-guard-frontend:latest -t farot3/park-guard-frontend:v1.0 .
-docker push farot3/park-guard-frontend --all-tags
+docker build -t farot33/park-guard-frontend:latest -t farot33/park-guard-frontend:v1.0 .
+docker push farot33/park-guard-frontend --all-tags
 ```
 
 ---

@@ -198,6 +198,7 @@ def main() -> None:
                         "source": "viv",
                         "vehicle_type": label,
                         "plate_text": plate_text,
+                        "fee_quetzales": get_fee(label),
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
 

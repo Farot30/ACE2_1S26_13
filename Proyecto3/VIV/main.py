@@ -24,7 +24,7 @@ load_dotenv()
 
 # Configuracion minima
 CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
-YOLO_MODEL = os.getenv("YOLO_MODEL", "yolov8n.pt")
+YOLO_MODEL = os.getenv("YOLO_MODEL", "./Proyecto3/VIV/yolov8n.pt")
 YOLO_CONFIDENCE = float(os.getenv("YOLO_CONFIDENCE", "0.25"))
 COOLDOWN_SECONDS = int(os.getenv("DETECTION_COOLDOWN_SECONDS", "3"))
 MAX_FRAMES = int(os.getenv("MAX_FRAMES", "0"))
@@ -112,7 +112,7 @@ def read_plate(reader, frame, box) -> tuple[str, float]:
 
     # Debug: guardar la región de placa para revisar
     try:
-        cv2.imwrite("debug_plate_region.jpg", plate_roi)
+        cv2.imwrite("./Proyecto3/VIV/plate_region.jpg", plate_roi)
     except Exception:
         pass
 
@@ -145,7 +145,6 @@ def main() -> None:
 
     ocr_reader = create_ocr_reader()
     mqtt_client = create_mqtt_client()
-    plates_collection = create_mongo_collection()
     last_emit = 0.0
     last_event = None
     use_display = True
@@ -194,17 +193,11 @@ def main() -> None:
 
                 if (time.time() - last_emit) >= COOLDOWN_SECONDS:
                     plate_text, plate_confidence = read_plate(ocr_reader, frame, best["box"])
-                    authorized = is_plate_authorized(plates_collection, plate_text)
                     event = {
                         "event_type": "viv_vehicle_detected",
                         "source": "viv",
                         "vehicle_type": label,
-                        "confidence": confidence,
                         "plate_text": plate_text,
-                        "plate_confidence": plate_confidence,
-                        "plate_authorized": authorized,
-                        "access_granted": authorized,
-                        "fee_quetzales": get_fee(label),
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
 

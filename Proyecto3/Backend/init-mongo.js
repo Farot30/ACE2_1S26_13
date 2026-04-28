@@ -67,4 +67,46 @@ try {
   print('⚠ ' + err);
 }
 
+// Colección para registros VIV específicos
+try {
+  db.createCollection('registros_viv');
+  db.registros_viv.createIndex({ 'plate_text': 1 });
+  db.registros_viv.createIndex({ 'timestamp': 1 });
+  print('✓ Colección registros_viv creada');
+} catch (err) {
+  print('⚠ ' + err);
+}
+
+// Colección de vehículos (placa vinculada a usuario)
+try {
+  db.createCollection('vehiculos');
+  db.vehiculos.createIndex({ 'plate_text': 1 }, { unique: true });
+  db.vehiculos.createIndex({ 'usuario_id': 1 });
+  db.vehiculos.createIndex({ 'rfid_card': 1 });
+  print('✓ Colección vehiculos creada');
+} catch (err) {
+  print('⚠ ' + err);
+}
+
+// Colección de registros entrada/salida
+try {
+  db.createCollection('registros_entrada_salida');
+  db.registros_entrada_salida.createIndex({ 'plate_text': 1 });
+  db.registros_entrada_salida.createIndex({ 'timestamp_entrada': 1 });
+  db.registros_entrada_salida.createIndex({ 'usuario_id': 1 });
+  print('✓ Colección registros_entrada_salida creada');
+} catch (err) {
+  print('⚠ ' + err);
+}
+
+// Colección de operadores/usuarios
+try {
+  db.createCollection('operadores');
+  db.operadores.createIndex({ 'email': 1 }, { unique: true });
+  db.operadores.createIndex({ 'activo': 1 });
+  print('✓ Colección operadores creada');
+} catch (err) {
+  print('⚠ ' + err);
+}
+
 print('✓ Base de datos Park-Guard inicializada correctamente');

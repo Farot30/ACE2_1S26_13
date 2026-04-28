@@ -1,3 +1,4 @@
+from Proyecto3.Backend.app.routes import viv_routes
 from flask import Flask
 from flask_cors import CORS
 from flask_socketio import SocketIO
@@ -50,6 +51,9 @@ def create_app(config_name=None):
     # Registrar eventos WebSocket
     from app.websocket import register_socketio_events
     register_socketio_events(socketio)
+    
+    from app.routes import viv_routes
+    app.register_blueprint(viv_routes.bp)  
     
     # Consumer embebido desactivado por defecto para evitar doble consumidor.
     # Activar solo si ENABLE_EMBEDDED_CONSUMER=true

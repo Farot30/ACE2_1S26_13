@@ -49,6 +49,7 @@ TOPICS_MQTT = {
     'emergency': 'park-guard/emergency/trigger',
     'ventilator': 'park-guard/ventilator/command',
     'events':    'park-guard/events',
+    "viv":       'park-guard/viv/vehiculos',
 }
 
 COBRO_POR_INGRESO = 1.0
@@ -182,6 +183,8 @@ class ConsumerMQTT:
                     })
             elif 'doors' in topic or 'door_update' in topic:
                 self._procesar_puerta(payload)
+            elif 'viv' in topic:
+                self._procesar_viv(payload)
             
             logger.info(f"Procesado {topic}: {payload}")
         except json.JSONDecodeError:
@@ -258,123 +261,249 @@ class ConsumerMQTT:
                 logger.error(f"Error Socket.IO gas: {e}")
         
         logger.info(f"Gas: {ppm} ppm")
+
+    def _procesar_viv(self, payload):
+        """
+        Procesar detección VIV - SOLO ENTRADA
+        Payload esperado:
+        {
+            "event_type": "viv_vehicle_detected",
+            "source": "viv",
+            "vehicle_type": "car" | "motorcycle" | "truck",
+            "plate_text": "JNU540",
+            "fee_quetzales": 10.0,
+            "timestamp": "2026-04-28T02:00:09.266052+00:00"
+        }
+        """
+        try:
+            # Extraer datos del payload
+            event_type = payload.get('event_type')
+            source = payload.get('source', 'viv')
+            vehicle_type = payload.get('vehicle_type')
+            plate_text = payload.get('plate_text')
+            fee_quetzales = payload.get('fee_quetzales', 0.0)
+            timestamp = payload.get('timestamp', datetime.utcnow().isoformat())
+            
+            # Validar datos esenciales
+            if not plate_text:
+                logger.warning(f"Placa no definida en payload VIV: {payload}")
+                return
+            
+            if not vehicle_type:
+                logger.warning(f"Tipo de vehículo no definido en payload VIV: {payload}")
+                return
+            
+            # Convertir timestamp
+            try:
+                timestamp_obj = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            except:
+                timestamp_obj = datetime.utcnow()
+            
+            # Verificar que no haya entrada reciente (últimos 5 minutos) del mismo vehículo
+            from datetime import timedelta
+            hace_5_minutos = timestamp_obj - timedelta(minutes=5)
+            
+            entrada_reciente = self.db.registros_entrada_salida.find_one({
+                'plate_text': plate_text,
+                'timestamp_entrada': {'$gte': hace_5_minutos},
+                'tipo': 'entrada',
+                'timestamp_salida': None  # Aún sin salida
+            })
+            
+            if entrada_reciente:
+                logger.warning(f"⚠ VIV: Placa {plate_text} ya registrada recientemente, omitiendo duplicado")
+                return
+            
+            # CREAR REGISTRO DE ENTRADA
+            registro_entrada = {
+                'plate_text': plate_text,
+                'vehicle_type': vehicle_type,
+                'timestamp_entrada': timestamp_obj,
+                'timestamp_salida': None,
+                'tarifa_por_hora': fee_quetzales,
+                'tarifa_cobrada': None,
+                'tiempo_estacionado_minutos': None,
+                'tipo': 'entrada',  # VIV solo es entrada
+                'source': 'viv',
+                'usuario_id': None,  # VIV no requiere usuario
+                'metodo_deteccion': 'vision',
+                'estado': 'activo'
+            }
+            
+            result = self.db.registros_entrada_salida.insert_one(registro_entrada)
+            logger.info(f"✓ ENTRADA VIV: {vehicle_type.upper()} - Placa: {plate_text} - Tarifa: Q{fee_quetzales:.2f}")
+            
+            # Guardar también en registros_viv (histórico específico)
+            self.db.registros_viv.insert_one({
+                'event_type': event_type,
+                'source': source,
+                'vehicle_type': vehicle_type,
+                'plate_text': plate_text,
+                'fee_quetzales': fee_quetzales,
+                'timestamp': timestamp_obj,
+                'registro_entrada_salida_id': result.inserted_id,
+                'procesado': True
+            })
+            
+            # Guardar evento general
+            self.db.events.insert_one({
+                'event_type': 'entrada_viv',
+                'vehicle_type': vehicle_type,
+                'plate_text': plate_text,
+                'timestamp': timestamp_obj,
+                'tarifa_por_hora': fee_quetzales,
+                'description': f"Entrada VIV: {vehicle_type} ({plate_text})",
+                'source': 'viv'
+            })
+            
+            # Socket.IO
+            if self.socketio:
+                try:
+                    self.socketio.emit('viv_entrada', {
+                        'vehicle_type': vehicle_type,
+                        'plate_text': plate_text,
+                        'tarifa_por_hora': fee_quetzales,
+                        'timestamp': timestamp,
+                        'source': source
+                    }, broadcast=True)
+                    logger.info(f"Socket.IO: viv_entrada emitido")
+                except Exception as e:
+                    logger.error(f"Error emitiendo Socket.IO VIV: {e}")
+                
+        except Exception as e:
+            logger.error(f"Error procesando VIV: {e}", exc_info=True)
     
     def _procesar_rfid(self, payload):
         """
-        Procesar lectura RFID
-        Payload: {"type": "rfid", "card_id": "ABC123", "timestamp": "..."}
+        Procesar lectura RFID - SOLO ENTRADA
+        Payload: {"type": "rfid", "card_id": "ABC123", "plate_text": "JNU540", "timestamp": "..."}
+        
+        IMPORTANTE: Valida que la placa registrada para el usuario coincida con la placa leída
         """
         card_id = payload.get('card_id')
+        plate_text = payload.get('plate_text')  # NUEVA: placa detectada
         timestamp = payload.get('timestamp', datetime.utcnow().isoformat())
         
         if not card_id:
-            logger.warning(f"Card ID no definido en payload: {payload}")
+            logger.warning(f"Card ID no definido en payload RFID: {payload}")
             return
         
-        # Buscar usuario con esta tarjeta
-        usuario = self.db.users.find_one({'rfid_card': card_id})
-        access_granted = False
-
-        if usuario:
-            balance_actual = float(usuario.get('balance', 5.0))
-            activo = bool(usuario.get('is_active', True))
-
-            if not activo:
-                razon = 'tarjeta desactivada'
-            elif balance_actual < COBRO_POR_INGRESO:
-                razon = 'saldo insuficiente'
-            else:
-                access_granted = True
-                nuevo_saldo = round(balance_actual - COBRO_POR_INGRESO, 2)
-        else:
-            razon = 'tarjeta no autorizada'
+        if not plate_text:
+            logger.warning(f"Placa no definida en payload RFID: {payload}")
+            return
         
-        # CRÍTICO: Publicar comando de acceso INMEDIATAMENTE (antes de DB operations)
-        # El Arduino espera respuesta rápida (timeout 3 segundos)
-        user_name = usuario.get('name') if usuario else 'Desconocido'
-        self._publicar_comando_acceso(access_granted, card_id, timestamp, user_name)
-        
-        # Luego hacer operaciones de base de datos (no afecta al Arduino)
-        if usuario:
-            if access_granted and not self.socketio:
-                nuevo_saldo = round(balance_actual - COBRO_POR_INGRESO, 2)
-                self.db.users.update_one(
-                    {'_id': usuario.get('_id')},
-                    {
-                        '$set': {
-                            'balance': nuevo_saldo,
-                            'last_access': datetime.utcnow(),
-                            'updated_at': datetime.utcnow()
-                        },
-                        '$inc': {'access_count': 1}
-                    }
-                )
-
-                self.db.events.insert_one({
-                    'event_type': 'access_granted',
-                    'user_id': usuario.get('_id'),
-                    'space_id': None,
-                    'description': f"Acceso concedido a {usuario.get('name')} (cobro Q1.00)",
-                    'data': {
-                        'rfid_card': card_id,
-                        'charged': COBRO_POR_INGRESO,
-                        'balance_before': balance_actual,
-                        'balance_after': nuevo_saldo,
-                    },
-                    'timestamp': datetime.utcnow(),
-                    'resolved': False
-                })
-                logger.info(f"RFID válida: {usuario.get('name')} | saldo {balance_actual:.2f} -> {nuevo_saldo:.2f}")
-
-            if not access_granted and not self.socketio:
-                self.db.events.insert_one({
-                    'event_type': 'access_denied',
-                    'user_id': usuario.get('_id'),
-                    'space_id': None,
-                    'description': f"Acceso denegado a {usuario.get('name')}: {razon}",
-                    'data': {
-                        'rfid_card': card_id,
-                        'reason': razon,
-                        'balance': balance_actual,
-                    },
-                    'timestamp': datetime.utcnow(),
-                    'resolved': False
-                })
-                logger.warning(f"RFID denegada: {usuario.get('name')} ({razon})")
-        else:
-            if not self.socketio:
-                self.db.events.insert_one({
-                    'event_type': 'access_denied',
-                    'user_id': None,
-                    'space_id': None,
-                    'description': f"Acceso denegado con tarjeta no autorizada: {card_id}",
-                    'data': {
-                        'rfid_card': card_id,
-                        'reason': 'tarjeta no autorizada',
-                    },
-                    'timestamp': datetime.utcnow(),
-                    'resolved': False
-                })
-                self.db.suspicious_activity.insert_one({
-                    'type': 'rfid_read_denied',
-                    'rfid_card': card_id,
-                    'timestamp': timestamp,
-                    'description': f"Intento con tarjeta no autorizada: {card_id}"
-                })
-            logger.warning(f"RFID desconocida: {card_id}")
-        
-        # Emitir Socket.IO
-        if self.socketio:
+        try:
+            # Convertir timestamp
             try:
-                self.socketio.emit('rfid_event', {
-                    'card_id': card_id,
-                    'authorized': access_granted,
-                    'user_name': usuario.get('name') if usuario else 'Desconocido',
-                    'timestamp': timestamp
-                }, room='parking-updates')
-                logger.info(f"Socket.IO: rfid_event")
-            except Exception as e:
-                logger.error(f"Error Socket.IO rfid: {e}")
+                timestamp_obj = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            except:
+                timestamp_obj = datetime.utcnow()
+            
+            # 1. BUSCAR USUARIO por tarjeta RFID
+            usuario = self.db.operadores.find_one({'rfid_card': card_id, 'activo': True})
+            
+            if not usuario:
+                logger.warning(f"❌ RFID no autorizado: {card_id}")
+                # Guardar intento fallido
+                self.db.events.insert_one({
+                    'event_type': 'rfid_no_autorizado',
+                    'rfid_card': card_id,
+                    'plate_text': plate_text,
+                    'timestamp': timestamp_obj,
+                    'description': f"RFID no registrado: {card_id}",
+                    'acceso_concedido': False
+                })
+                return
+            
+            # 2. VALIDAR que la placa coincida con el usuario
+            vehiculo = self.db.vehiculos.find_one({
+                'usuario_id': usuario['_id'],
+                'rfid_card': card_id,
+                'plate_text': plate_text.upper(),
+                'activo': True
+            })
+            
+            if not vehiculo:
+                logger.warning(f"❌ PLACA NO COINCIDE: Usuario {usuario.get('nombre')} con RFID {card_id} tiene placa diferente")
+                # Guardar intento fallido
+                self.db.events.insert_one({
+                    'event_type': 'rfid_placa_no_coincide',
+                    'usuario_id': usuario['_id'],
+                    'rfid_card': card_id,
+                    'plate_text': plate_text,
+                    'timestamp': timestamp_obj,
+                    'description': f"Placa no coincide. Usuario: {usuario.get('nombre')}, Placa leída: {plate_text}",
+                    'acceso_concedido': False
+                })
+                return
+            
+            # 3. REGISTRAR ENTRADA
+            logger.info(f"✓ RFID VÁLIDO: {usuario.get('nombre')} - Placa: {plate_text}")
+            
+            # Verificar que no haya entrada activa sin salida
+            from datetime import timedelta
+            entrada_activa = self.db.registros_entrada_salida.find_one({
+                'usuario_id': usuario['_id'],
+                'plate_text': plate_text.upper(),
+                'tipo': 'entrada',
+                'timestamp_salida': None
+            })
+            
+            if entrada_activa:
+                logger.warning(f"⚠ RFID: Usuario {usuario.get('nombre')} ya tiene entrada activa sin salida")
+                return
+            
+            # Crear registro de entrada
+            registro = {
+                'usuario_id': usuario['_id'],
+                'usuario_nombre': usuario.get('nombre'),
+                'usuario_email': usuario.get('email'),
+                'plate_text': plate_text.upper(),
+                'vehicle_id': vehiculo['_id'],
+                'rfid_card': card_id,
+                'timestamp_entrada': timestamp_obj,
+                'timestamp_salida': None,
+                'tarifa_por_hora': vehiculo.get('tarifa_por_hora', 5.0),
+                'tarifa_cobrada': None,
+                'tiempo_estacionado_minutos': None,
+                'tipo': 'entrada',
+                'source': 'rfid',
+                'metodo_deteccion': 'rfid',
+                'estado': 'activo'
+            }
+            
+            result = self.db.registros_entrada_salida.insert_one(registro)
+            logger.info(f"✓ ENTRADA RFID registrada: {usuario.get('nombre')} - {plate_text}")
+            
+            # Guardar evento
+            self.db.events.insert_one({
+                'event_type': 'entrada_rfid',
+                'usuario_id': usuario['_id'],
+                'usuario_nombre': usuario.get('nombre'),
+                'plate_text': plate_text.upper(),
+                'rfid_card': card_id,
+                'timestamp': timestamp_obj,
+                'description': f"Entrada RFID: {usuario.get('nombre')} ({plate_text})",
+                'acceso_concedido': True,
+                'source': 'rfid'
+            })
+            
+            # Socket.IO
+            if self.socketio:
+                try:
+                    self.socketio.emit('rfid_entrada', {
+                        'usuario': usuario.get('nombre'),
+                        'plate_text': plate_text,
+                        'card_id': card_id,
+                        'timestamp': timestamp,
+                        'source': 'rfid'
+                    }, broadcast=True)
+                    logger.info(f"Socket.IO: rfid_entrada emitido")
+                except Exception as e:
+                    logger.error(f"Error emitiendo Socket.IO RFID: {e}")
+            
+        except Exception as e:
+            logger.error(f"Error procesando RFID: {e}", exc_info=True)
     
     def _publicar_comando_acceso(self, access_granted, card_id, timestamp, user_name=None):
         """

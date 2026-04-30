@@ -174,3 +174,44 @@ def validate_access():
         },
         status_code=200
     )
+
+
+@bp.route('/metrics', methods=['GET'])
+def get_metrics():
+    """Endpoint público para métricas de Grafana"""
+    from app.services import EventService, ParkingService, UserService
+    from datetime import datetime
+    
+    try:
+        available_spaces = ParkingService.get_available_spaces()
+        total_spaces = 5
+        occupied_spaces = total_spaces - available_spaces
+        
+        access_granted = EventService.get_events_by_type(Event.ACCESS_GRANTED)
+        access_denied = EventService.get_events_by_type(Event.ACCESS_DENIED)
+        emergencies = EventService.get_events_by_type(Event.EMERGENCY_TRIGGERED)
+        ventilator = EventService.get_events_by_type(Event.VENTILATOR_ACTIVATED)
+        
+        events = EventService.get_all_events(limit=20)
+        
+        return create_response(
+            data={
+                'parking': {
+                    'total_spaces': total_spaces,
+                    'occupied_spaces': occupied_spaces,
+                    'available_spaces': available_spaces,
+                    'occupancy_percentage': round((occupied_spaces / total_spaces) * 100, 2) if total_spaces > 0 else 0
+                },
+                'events': {
+                    'access_granted': len(access_granted),
+                    'access_denied': len(access_denied),
+                    'emergencies': len(emergencies),
+                    'ventilator_activations': len(ventilator)
+                },
+                'recent_events': events[:10] if events else []
+            },
+            message="Métricas del sistema",
+            status_code=200
+        )
+    except Exception as e:
+        return create_error_response(f"Error获取 métricas: {str(e)}", 500)

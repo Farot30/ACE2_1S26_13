@@ -68,6 +68,9 @@ services:
     restart: unless-stopped
 
   consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.consumer
     image: farot33/park-guard-consumer:latest
     container_name: park-guard-consumer
     environment:
@@ -95,11 +98,14 @@ services:
         max-file: "3"
 
   frontend:
+    build:
+      context: ../Frontend
+      dockerfile: Dockerfile
     image: farot33/park-guard-frontend:latest
     container_name: park-guard-frontend
     environment:
-      VITE_API_URL: http://100.81.62.108:5000
-      VITE_MQTT_URL: ws://100.81.62.108:9001
+      VITE_API_URL: http://192.168.0.6:5000
+      VITE_MQTT_URL: ws://192.168.0.6:9001
     ports:
       - "3000:3000"
     depends_on:
@@ -108,10 +114,57 @@ services:
       - park-guard-network
     restart: unless-stopped
 
+  grafana:
+    build:
+      context: ./grafana
+      dockerfile: Dockerfile
+    image: farot33/park-guard-grafana:latest
+    container_name: park-guard-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=parkguard123
+      - GF_SERVER_ROOT_URL=http://192.168.0.6:3001
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=marcusolsson-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/plugins:/var/lib/grafana/plugins
+    networks:
+      - park-guard-network
+    depends_on:
+      - backend
+      - mongodb
+    restart: unless-stopped
+
+  metrics:
+    image: node:20-alpine
+    container_name: park-guard-metrics
+    working_dir: /app
+    command: sh -c "npm install mongodb --save 2>/dev/null && node metrics_server.js"
+    volumes:
+      - ./metrics_server.js:/app/metrics_server.js:ro
+    environment:
+      - MONGO_HOST=mongodb
+      - MONGO_PORT=27017
+      - MONGO_USER=park_user
+      - MONGO_PASSWORD=park_password
+      - MONGO_DB=park_guard
+    ports:
+      - "8080:8080"
+    networks:
+      - park-guard-network
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+
 volumes:
   mongodb_data:
   mosquitto_data:
   mosquitto_logs:
+  grafana_data:
 
 
 networks:

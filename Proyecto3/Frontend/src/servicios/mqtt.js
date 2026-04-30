@@ -17,6 +17,7 @@ function normalizarTopico(topico = '') {
 function convertirTopicoAEvento(topicoOriginal, payload) {
   const topico = normalizarTopico(topicoOriginal)
 
+  // Ocupación de parqueos
   if (/^park-guard\/parking\/\d+\/status$/.test(topico)) {
     return {
       evento: 'parking_update',
@@ -28,6 +29,7 @@ function convertirTopicoAEvento(topicoOriginal, payload) {
     }
   }
 
+  // Sensor de gas
   if (topico === 'park-guard/gas/sensor') {
     return {
       evento: 'gas_update',
@@ -38,6 +40,18 @@ function convertirTopicoAEvento(topicoOriginal, payload) {
     }
   }
 
+  // Lectura RFID (en vivo)
+  if (topico === 'park-guard/rfid/read') {
+    return {
+      evento: 'rfid_read',
+      dato: {
+        card_id: payload.card_id,
+        timestamp: payload.timestamp,
+      },
+    }
+  }
+
+  // Activación manual/auto de ventilador (desde Arduino)
   if (topico === 'park-guard/ventilator/command') {
     return {
       evento: 'ventilator_update',
@@ -49,6 +63,7 @@ function convertirTopicoAEvento(topicoOriginal, payload) {
     }
   }
 
+  // Disparo de emergencia (desde Arduino)
   if (topico === 'park-guard/emergency/trigger') {
     return {
       evento: 'emergency_alert',
@@ -60,30 +75,31 @@ function convertirTopicoAEvento(topicoOriginal, payload) {
     }
   }
 
-  const coincidenciaBarrera = topico.match(/^park-guard\/commands\/barrier\/(\d+)$/)
-  if (coincidenciaBarrera) {
-    const numero = Number(coincidenciaBarrera[1])
+  // Estado de puertas (desde Arduino)
+  if (topico === 'park-guard/doors/entrance/status' || topico === 'park-guard/doors/exit/status') {
+    const door = payload.door || (topico.includes('entrance') ? 'entrance' : 'exit')
     return {
       evento: 'door_update',
       dato: {
-        door_number: numero,
-        is_open: payload.command === 'open_barrier',
+        door: door,
+        is_open: Boolean(payload.is_open),
         timestamp: payload.timestamp,
       },
     }
   }
 
+  // Comandos de ventilador (desde Backend/Admin)
   if (topico === 'park-guard/commands/fan') {
     return {
       evento: 'ventilator_update',
       dato: {
         is_active: payload.command === 'activate_fan',
-        gas_level: payload.gas_level,
         timestamp: payload.timestamp,
       },
     }
   }
 
+  // Comandos de emergencia (desde Backend/Admin)
   if (topico === 'park-guard/commands/emergency') {
     const activada = payload.command === 'activate_emergency'
     return {
@@ -98,6 +114,45 @@ function convertirTopicoAEvento(topicoOriginal, payload) {
             status: { emergency: false },
             timestamp: payload.timestamp,
           },
+    }
+  }
+
+  // Comandos de puertas (desde Backend/Admin)
+  if (topico === 'park-guard/commands/door/entrance' || topico === 'park-guard/commands/door/exit') {
+    const door = payload.door || (topico.includes('entrance') ? 'entrance' : 'exit')
+    return {
+      evento: 'door_update',
+      dato: {
+        door: door,
+        is_open: payload.command === 'open_door',
+        timestamp: payload.timestamp,
+      },
+    }
+  }
+
+  // Comandos de espacios de parqueo (desde Backend/Admin)
+  if (topico === 'park-guard/commands/parking/space') {
+    return {
+      evento: 'parking_status_update',
+      dato: {
+        space_number: Number(payload.space),
+        is_enabled: payload.command === 'enable_space',
+        timestamp: payload.timestamp,
+      },
+    }
+  }
+
+  // Detección VIV (Visión)
+  if (topico === 'park-guard/viv/vehicle/type' || topico === 'park-guard/viv/vehiculos') {
+    return {
+      evento: 'viv_detection',
+      dato: {
+        vehicle_type: payload.vehicle_type,
+        plate_text: payload.plate_text,
+        fee_quetzales: payload.fee_quetzales,
+        timestamp: payload.timestamp,
+        source: payload.source || 'viv'
+      },
     }
   }
 
@@ -167,14 +222,17 @@ function crearClienteMqtt() {
         const topicos = [
           'park-guard/parking/+/status',
           'park-guard/gas/sensor',
-          'park-guard/ventilator/command',
+          'park-guard/rfid/read',
           'park-guard/emergency/trigger',
+          'park-guard/ventilator/command',
+          'park-guard/doors/+/status',
           'park-guard/commands/fan',
           'park-guard/commands/emergency',
-          'park-guard/commands/barrier/+',
+          'park-guard/commands/door/+',
+          'park-guard/viv/+',
           '/park-guard/commands/fan',
           '/park-guard/commands/emergency',
-          '/park-guard/commands/barrier/+',
+          '/park-guard/commands/door/+',
         ]
         topicos.forEach((topico) => {
           cliente.subscribe(topico, { qos: 1 })

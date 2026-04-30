@@ -48,6 +48,7 @@ TOPICS_MQTT = {
     'rfid':      'park-guard/rfid/read',
     'emergency': 'park-guard/emergency/trigger',
     'ventilator': 'park-guard/ventilator/command',
+    'doors':     'park-guard/doors/+/status',
     'events':    'park-guard/events',
     "viv":       'park-guard/viv/vehiculos',
 }
@@ -198,26 +199,31 @@ class ConsumerMQTT:
         Topic: park-guard/parking/{space}/status
         Payload: {"type": "parking", "space": 1, "is_occupied": true, "timestamp": "..."}
         """
-        space_number = payload.get('space')
+        try:
+            space_number = int(payload.get('space'))
+        except (TypeError, ValueError):
+            space_number = None
         is_occupied = payload.get('is_occupied', False)
         timestamp = payload.get('timestamp', datetime.utcnow().isoformat())
         
         if space_number is None:
             logger.warning(f"Space number no definido en payload: {payload}")
             return
+        if space_number < 1 or space_number > 5:
+            logger.warning(f"Space number fuera de rango (1-5): {space_number}")
+            return
         
-        # Actualizar en MongoDB
-        if not self.socketio:
-            self.db.parking_spaces.update_one(
-                {'space_number': space_number},
-                {
-                    '$set': {
-                        'is_occupied': is_occupied,
-                        'last_updated': timestamp
-                    }
-                },
-                upsert=True
-            )
+        # Actualizar en MongoDB (siempre, para histórico y Grafana)
+        self.db.parking_spaces.update_one(
+            {'space_number': space_number},
+            {
+                '$set': {
+                    'is_occupied': is_occupied,
+                    'last_updated': timestamp
+                }
+            },
+            upsert=True
+        )
         
         # Emitir Socket.IO al Frontend
         if self.socketio:
@@ -241,13 +247,12 @@ class ConsumerMQTT:
         ppm = payload.get('ppm', 0)
         timestamp = payload.get('timestamp', datetime.utcnow().isoformat())
         
-        # Guardar estadística en MongoDB
-        if not self.socketio:
-            self.db.statistics.insert_one({
-                'type': 'gas_reading',
-                'ppm': ppm,
-                'timestamp': timestamp
-            })
+        # Guardar estadística en MongoDB (siempre, para Grafana)
+        self.db.statistics.insert_one({
+            'type': 'gas_reading',
+            'ppm': ppm,
+            'timestamp': timestamp
+        })
         
         # Emitir Socket.IO
         if self.socketio:
@@ -375,135 +380,114 @@ class ConsumerMQTT:
     
     def _procesar_rfid(self, payload):
         """
-        Procesar lectura RFID - SOLO ENTRADA
-        Payload: {"type": "rfid", "card_id": "ABC123", "plate_text": "JNU540", "timestamp": "..."}
-        
-        IMPORTANTE: Valida que la placa registrada para el usuario coincida con la placa leída
+        Procesar lectura RFID
+        Payload: {"card_id": "ABC123", "timestamp": "..."}
         """
         card_id = payload.get('card_id')
-        plate_text = payload.get('plate_text')  # NUEVA: placa detectada
         timestamp = payload.get('timestamp', datetime.utcnow().isoformat())
         
         if not card_id:
             logger.warning(f"Card ID no definido en payload RFID: {payload}")
             return
         
-        if not plate_text:
-            logger.warning(f"Placa no definida en payload RFID: {payload}")
-            return
-        
         try:
-            # Convertir timestamp
-            try:
-                timestamp_obj = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-            except:
-                timestamp_obj = datetime.utcnow()
+            # 1. BUSCAR USUARIO por tarjeta RFID en la colección 'users'
+            usuario = self.db.users.find_one({'rfid_card': card_id.upper()})
             
-            # 1. BUSCAR USUARIO por tarjeta RFID
-            usuario = self.db.operadores.find_one({'rfid_card': card_id, 'activo': True})
+            access_granted = False
+            user_name = "Desconocido"
             
-            if not usuario:
-                logger.warning(f"❌ RFID no autorizado: {card_id}")
-                # Guardar intento fallido
-                self.db.events.insert_one({
-                    'event_type': 'rfid_no_autorizado',
-                    'rfid_card': card_id,
-                    'plate_text': plate_text,
-                    'timestamp': timestamp_obj,
-                    'description': f"RFID no registrado: {card_id}",
-                    'acceso_concedido': False
-                })
-                return
+            if usuario:
+                user_name = usuario.get('name', 'Usuario')
+                # 2. VALIDAR si el usuario está activo y tiene saldo
+                if usuario.get('is_active', False) and usuario.get('balance', 0) >= COBRO_POR_INGRESO:
+                    access_granted = True
+                    # Descontar saldo y aumentar contador
+                    self.db.users.update_one(
+                        {'_id': usuario['_id']},
+                        {
+                            '$inc': {'balance': -COBRO_POR_INGRESO, 'access_count': 1},
+                            '$set': {'last_access': datetime.utcnow()}
+                        }
+                    )
+                    logger.info(f"✓ ACCESO CONCEDIDO: {user_name} ({card_id})")
+                else:
+                    razon = "Inactivo" if not usuario.get('is_active') else "Saldo insuficiente"
+                    logger.warning(f"❌ ACCESO DENEGADO ({razon}): {user_name} ({card_id})")
+            else:
+                logger.warning(f"❌ RFID NO REGISTRADO: {card_id}")
+
+            # 3. PUBLICAR COMANDO DE ACCESO AL HARDWARE (Inmediato)
+            self._publicar_comando_acceso(access_granted, card_id, timestamp, user_name)
             
-            # 2. VALIDAR que la placa coincida con el usuario
-            vehiculo = self.db.vehiculos.find_one({
-                'usuario_id': usuario['_id'],
-                'rfid_card': card_id,
-                'plate_text': plate_text.upper(),
-                'activo': True
-            })
-            
-            if not vehiculo:
-                logger.warning(f"❌ PLACA NO COINCIDE: Usuario {usuario.get('nombre')} con RFID {card_id} tiene placa diferente")
-                # Guardar intento fallido
-                self.db.events.insert_one({
-                    'event_type': 'rfid_placa_no_coincide',
-                    'usuario_id': usuario['_id'],
-                    'rfid_card': card_id,
-                    'plate_text': plate_text,
-                    'timestamp': timestamp_obj,
-                    'description': f"Placa no coincide. Usuario: {usuario.get('nombre')}, Placa leída: {plate_text}",
-                    'acceso_concedido': False
-                })
-                return
-            
-            # 3. REGISTRAR ENTRADA
-            logger.info(f"✓ RFID VÁLIDO: {usuario.get('nombre')} - Placa: {plate_text}")
-            
-            # Verificar que no haya entrada activa sin salida
-            from datetime import timedelta
-            entrada_activa = self.db.registros_entrada_salida.find_one({
-                'usuario_id': usuario['_id'],
-                'plate_text': plate_text.upper(),
-                'tipo': 'entrada',
-                'timestamp_salida': None
-            })
-            
-            if entrada_activa:
-                logger.warning(f"⚠ RFID: Usuario {usuario.get('nombre')} ya tiene entrada activa sin salida")
-                return
-            
-            # Crear registro de entrada
-            registro = {
-                'usuario_id': usuario['_id'],
-                'usuario_nombre': usuario.get('nombre'),
-                'usuario_email': usuario.get('email'),
-                'plate_text': plate_text.upper(),
-                'vehicle_id': vehiculo['_id'],
-                'rfid_card': card_id,
-                'timestamp_entrada': timestamp_obj,
-                'timestamp_salida': None,
-                'tarifa_por_hora': vehiculo.get('tarifa_por_hora', 5.0),
-                'tarifa_cobrada': None,
-                'tiempo_estacionado_minutos': None,
-                'tipo': 'entrada',
-                'source': 'rfid',
-                'metodo_deteccion': 'rfid',
-                'estado': 'activo'
-            }
-            
-            result = self.db.registros_entrada_salida.insert_one(registro)
-            logger.info(f"✓ ENTRADA RFID registrada: {usuario.get('nombre')} - {plate_text}")
-            
-            # Guardar evento
+            # 4. REGISTRAR EVENTO EN BD
             self.db.events.insert_one({
-                'event_type': 'entrada_rfid',
-                'usuario_id': usuario['_id'],
-                'usuario_nombre': usuario.get('nombre'),
-                'plate_text': plate_text.upper(),
+                'event_type': 'access_granted' if access_granted else 'access_denied',
                 'rfid_card': card_id,
-                'timestamp': timestamp_obj,
-                'description': f"Entrada RFID: {usuario.get('nombre')} ({plate_text})",
-                'acceso_concedido': True,
-                'source': 'rfid'
+                'user_id': usuario['_id'] if usuario else None,
+                'user_name': user_name,
+                'timestamp': datetime.utcnow(),
+                'description': f"{'Acceso concedido' if access_granted else 'Acceso denegado'} a {user_name}",
+                'data': {'rfid_card': card_id}
             })
-            
-            # Socket.IO
+
+            # 5. DETECTAR ACTIVIDAD SOSPECHOSA (Si el acceso fue denegado)
+            if not access_granted:
+                self._detectar_actividad_sospechosa(card_id)
+
+            # 6. EMITIR POR SOCKET.IO
             if self.socketio:
-                try:
-                    self.socketio.emit('rfid_entrada', {
-                        'usuario': usuario.get('nombre'),
-                        'plate_text': plate_text,
-                        'card_id': card_id,
-                        'timestamp': timestamp,
-                        'source': 'rfid'
-                    }, broadcast=True)
-                    logger.info(f"Socket.IO: rfid_entrada emitido")
-                except Exception as e:
-                    logger.error(f"Error emitiendo Socket.IO RFID: {e}")
-            
+                self.socketio.emit('rfid_read', {
+                    'card_id': card_id,
+                    'user_name': user_name,
+                    'granted': access_granted,
+                    'timestamp': timestamp
+                }, broadcast=True)
+
         except Exception as e:
             logger.error(f"Error procesando RFID: {e}", exc_info=True)
+    
+    def _detectar_actividad_sospechosa(self, card_id):
+        """
+        Lógica inteligente para detectar múltiples intentos fallidos
+        """
+        try:
+            from datetime import timedelta
+            hace_5_minutos = datetime.utcnow() - timedelta(minutes=5)
+            
+            # Contar intentos fallidos en la colección de eventos
+            intentos_fallidos = self.db.events.count_documents({
+                'event_type': 'access_denied',
+                'rfid_card': card_id,
+                'timestamp': {'$gte': hace_5_minutos}
+            })
+            
+            if intentos_fallidos >= 3:
+                logger.warning(f"🚨 ALERTA: Actividad sospechosa detectada para tarjeta {card_id} ({intentos_fallidos} intentos)")
+                
+                # Registrar en la colección 'suspicious_activity'
+                self.db.suspicious_activity.insert_one({
+                    'activity_type': 'multiple_failed_attempts',
+                    'rfid_card': card_id,
+                    'severity': 'high' if intentos_fallidos >= 5 else 'medium',
+                    'details': {
+                        'failed_attempts': intentos_fallidos,
+                        'time_window': '5 minutes'
+                    },
+                    'timestamp': datetime.utcnow(),
+                    'resolved': False
+                })
+                
+                # Emitir alerta por Socket.IO para el Frontend
+                if self.socketio:
+                    self.socketio.emit('suspicious_alert', {
+                        'title': 'Intrusión detectada',
+                        'message': f'La tarjeta {card_id} ha intentado ingresar {intentos_fallidos} veces sin éxito.',
+                        'severity': 'high'
+                    }, room='parking-updates')
+                    
+        except Exception as e:
+            logger.error(f"Error detectando actividad sospechosa: {e}")
     
     def _publicar_comando_acceso(self, access_granted, card_id, timestamp, user_name=None):
         """
@@ -549,14 +533,13 @@ class ConsumerMQTT:
         descripcion = 'Alerta de emergencia activada en todo el parqueo' if is_active else 'Alerta de emergencia desactivada'
         event_type = 'emergency_alert' if is_active else 'emergency_cleared'
         
-        # Registrar evento de emergencia
-        if not self.socketio:
-            self.db.events.insert_one({
-                'event_type': event_type,
-                'timestamp': timestamp,
-                'description': descripcion,
-                'is_active': is_active
-            })
+        # Registrar evento de emergencia (siempre, para Grafana)
+        self.db.events.insert_one({
+            'event_type': event_type,
+            'timestamp': timestamp,
+            'description': descripcion,
+            'is_active': is_active
+        })
         
         # Emitir Socket.IO
         if self.socketio:
@@ -620,16 +603,15 @@ class ConsumerMQTT:
             logger.warning(f"Door no definido en payload: {payload}")
             return
         
-        # Guardar evento de puerta en MongoDB
-        if not self.socketio:
-            self.db.events.insert_one({
-                'event_type': 'door_update',
-                'door': door,
-                'is_open': is_open,
-                'description': f"Talanquera {door} {'abierta' if is_open else 'cerrada'}",
-                'timestamp': datetime.utcnow(),
-                'resolved': False
-            })
+        # Guardar evento de puerta en MongoDB (siempre, para Grafana)
+        self.db.events.insert_one({
+            'event_type': 'door_update',
+            'door': door,
+            'is_open': is_open,
+            'description': f"Talanquera {door} {'abierta' if is_open else 'cerrada'}",
+            'timestamp': datetime.utcnow(),
+            'resolved': False
+        })
         
         # Emitir Socket.IO
         if self.socketio:

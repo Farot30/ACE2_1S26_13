@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import p5 from 'p5'
 
-function LienzoParqueo({ espacios, nivelGas, estadoEmergencia }) {
+function LienzoParqueo({ espacios, nivelGas, estadoEmergencia, estadoVentilador }) {
   const referenciaContenedor = useRef(null)
 
   useEffect(() => {
@@ -9,7 +9,7 @@ function LienzoParqueo({ espacios, nivelGas, estadoEmergencia }) {
 
     const boceto = (dibujo) => {
       dibujo.setup = () => {
-        dibujo.createCanvas(680, 290)
+        dibujo.createCanvas(680, 320)
       }
 
       dibujo.draw = () => {
@@ -41,10 +41,23 @@ function LienzoParqueo({ espacios, nivelGas, estadoEmergencia }) {
           dibujo.text(espacio.is_enabled ? (espacio.is_occupied ? 'ocupado' : 'libre') : 'mantenimiento', ejeX + 12, ejeY + 54)
         })
 
+        // Nivel de Gas (Barra visual)
         dibujo.fill(15, 23, 42)
         dibujo.textSize(14)
-        dibujo.text(`gas ppm: ${nivelGas ?? 'sin dato'}`, 24, 255)
-        dibujo.text(`emergencia: ${estadoEmergencia ? 'activa' : 'normal'}`, 260, 255)
+        dibujo.text(`gas: ${nivelGas ?? '...'} ppm`, 24, 260)
+        
+        dibujo.fill(226, 232, 240)
+        dibujo.rect(24, 270, 200, 10, 5)
+        const anchoGas = dibujo.constrain(dibujo.map(nivelGas || 0, 0, 1000, 0, 200), 0, 200)
+        dibujo.fill(nivelGas > 300 ? '#ef4444' : '#22c55e')
+        dibujo.rect(24, 270, anchoGas, 10, 5)
+
+        // Emergencia y Ventilador
+        dibujo.fill(estadoEmergencia ? '#ef4444' : '#22c55e')
+        dibujo.text(`emergencia: ${estadoEmergencia ? 'ACTIVA' : 'NORMAL'}`, 260, 260)
+        
+        dibujo.fill(15, 23, 42)
+        dibujo.text(`ventilador: ${estadoVentilador ? 'ENCENDIDO' : 'APAGADO'}`, 260, 280)
       }
     }
 
@@ -59,7 +72,7 @@ function LienzoParqueo({ espacios, nivelGas, estadoEmergencia }) {
         referenciaContenedor.current.innerHTML = ''
       }
     }
-  }, [espacios, nivelGas, estadoEmergencia])
+  }, [espacios, nivelGas, estadoEmergencia, estadoVentilador])
 
   return <div className="contenedor-lienzo" ref={referenciaContenedor} />
 }

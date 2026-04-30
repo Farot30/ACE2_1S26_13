@@ -43,6 +43,25 @@ function PaginaPanel() {
 
   const nombreAdmin = localStorage.getItem('admin_nombre') || 'admin'
 
+  function normalizarEspacios(lista = []) {
+    const mapa = new Map()
+    lista.forEach((item) => {
+      const numero = Number(item.space_number)
+      if (!Number.isInteger(numero) || numero < 1 || numero > 5) return
+      const previo = mapa.get(numero)
+      if (!previo) {
+        mapa.set(numero, { ...item, space_number: numero })
+        return
+      }
+      const previoTs = new Date(previo.last_updated || 0).getTime()
+      const actualTs = new Date(item.last_updated || 0).getTime()
+      if (actualTs >= previoTs) {
+        mapa.set(numero, { ...item, space_number: numero })
+      }
+    })
+    return Array.from(mapa.values()).sort((a, b) => a.space_number - b.space_number)
+  }
+
   useEffect(() => {
     cargarDatosIniciales()
   }, [])
@@ -55,13 +74,24 @@ function PaginaPanel() {
     })
 
     const handleParkingUpdate = (dato) => {
-      setEspacios((anterior) =>
-        anterior.map((espacio) =>
-          espacio.space_number === dato.space_number
-            ? { ...espacio, is_occupied: dato.is_occupied }
+      setEspacios((anterior) => {
+        const numero = Number(dato.space_number)
+        const actualizados = anterior.map((espacio) =>
+          espacio.space_number === numero
+            ? { ...espacio, is_occupied: dato.is_occupied, last_updated: dato.timestamp }
             : espacio,
-        ),
-      )
+        )
+        if (!actualizados.some((espacio) => espacio.space_number === numero)) {
+          actualizados.push({
+            id: `live-${numero}`,
+            space_number: numero,
+            is_occupied: Boolean(dato.is_occupied),
+            is_enabled: true,
+            last_updated: dato.timestamp,
+          })
+        }
+        return normalizarEspacios(actualizados)
+      })
       insertarEventoEnVivo({
         event_type: 'parking_update',
         description: `espacio ${dato.space_number} actualizado`,
@@ -173,7 +203,7 @@ function PaginaPanel() {
         solicitarApi('get', '/api/events/summary'),
       ])
 
-      setEspacios(respuestaEspacios.data || [])
+      setEspacios(normalizarEspacios(respuestaEspacios.data || []))
       setUsuarios(respuestaUsuarios.data || [])
       setEventos(respuestaEventos.data || [])
       setResumen(respuestaResumen.data || null)
@@ -300,6 +330,16 @@ function PaginaPanel() {
   async function cambiarEstadoEspacio(numeroEspacio, habilitado) {
     setError('')
     try {
+      const clienteMqtt = conectarMqtt()
+      clienteMqtt.emit('publish_command', {
+        topic: 'park-guard/commands/parking/space',
+        payload: {
+          command: habilitado ? 'disable_space' : 'enable_space',
+          space: numeroEspacio,
+          timestamp: crearTimestamp()
+        }
+      })
+
       const ruta = habilitado
         ? `/api/parking/spaces/${numeroEspacio}/disable`
         : `/api/parking/spaces/${numeroEspacio}/enable`
@@ -317,6 +357,15 @@ function PaginaPanel() {
   async function accionarVentilador(activar) {
     setError('')
     try {
+      const clienteMqtt = conectarMqtt()
+      clienteMqtt.emit('publish_command', {
+        topic: 'park-guard/commands/fan',
+        payload: {
+          command: activar ? 'activate_fan' : 'deactivate_fan',
+          timestamp: crearTimestamp()
+        }
+      })
+
       await solicitarApi('post', activar ? '/api/commands/fan/activate' : '/api/commands/fan/deactivate')
       setEstadoVentilador(activar)
       setMensaje(activar ? 'ventilador encendido' : 'ventilador apagado')
@@ -329,6 +378,16 @@ function PaginaPanel() {
   async function accionarTalanquera(tipo, abrir) {
     setError('')
     try {
+      const clienteMqtt = conectarMqtt()
+      clienteMqtt.emit('publish_command', {
+        topic: `park-guard/commands/door/${tipo}`,
+        payload: {
+          command: abrir ? 'open_door' : 'close_door',
+          door: tipo,
+          timestamp: crearTimestamp()
+        }
+      })
+
       const ruta = tipo === 'entrance'
         ? (abrir ? '/api/commands/door/entrance/open' : '/api/commands/door/entrance/close')
         : (abrir ? '/api/commands/door/exit/open' : '/api/commands/door/exit/close')
@@ -351,6 +410,15 @@ function PaginaPanel() {
   async function accionarEmergencia(activar) {
     setError('')
     try {
+      const clienteMqtt = conectarMqtt()
+      clienteMqtt.emit('publish_command', {
+        topic: 'park-guard/commands/emergency',
+        payload: {
+          command: activar ? 'activate_emergency' : 'deactivate_emergency',
+          timestamp: crearTimestamp()
+        }
+      })
+
       await solicitarApi('post', activar ? '/api/commands/emergency/activate' : '/api/commands/emergency/deactivate')
       setEstadoEmergencia(activar)
       setMensaje(activar ? 'emergencia activada' : 'emergencia desactivada')
@@ -394,10 +462,11 @@ function PaginaPanel() {
   }, [eventos])
 
   const datosGraficas = useMemo(() => {
-    const ingresos = eventos.filter((item) => item.event_type === 'access_granted').length
-    const denegados = eventos.filter((item) => item.event_type === 'access_denied').length
+    // Usar totales del resumen para los contadores principales si están disponibles
+    const ingresos = resumen?.events?.access_granted_today ?? eventos.filter((item) => item.event_type === 'access_granted').length
+    const denegados = resumen?.events?.access_denied_today ?? eventos.filter((item) => item.event_type === 'access_denied').length
     const salidas = eventos.filter((item) => item.event_type === 'manual_exit' || item.event_type === 'space_empty').length
-    const emergencias = eventos.filter(
+    const emergencias = resumen?.events?.emergencies_today ?? eventos.filter(
       (item) => item.event_type === 'emergency_triggered' || item.event_type === 'emergency_alert',
     ).length
     const ventilador = eventos.filter(
@@ -406,8 +475,9 @@ function PaginaPanel() {
 
     const usoEspacio = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
     eventos.forEach((item) => {
-      if (item.event_type === 'space_occupied' && item.space_id) {
-        usoEspacio[item.space_id] = (usoEspacio[item.space_id] || 0) + 1
+      const numEspacio = item.space_id || item.space_number
+      if (item.event_type === 'space_occupied' && numEspacio) {
+        usoEspacio[numEspacio] = (usoEspacio[numEspacio] || 0) + 1
       }
     })
 
@@ -422,7 +492,7 @@ function PaginaPanel() {
       usoEspacio,
       espacioMasUsado,
     }
-  }, [eventos])
+  }, [eventos, resumen])
 
   const graficaAccesos = {
     labels: ['ingresos', 'denegados', 'salidas'],
@@ -486,7 +556,12 @@ function PaginaPanel() {
 
         <div className="bloque">
           <h3>visualizacion p5.js</h3>
-          <LienzoParqueo espacios={espacios} nivelGas={nivelGas} estadoEmergencia={estadoEmergencia} />
+          <LienzoParqueo
+            espacios={espacios}
+            nivelGas={nivelGas}
+            estadoEmergencia={estadoEmergencia}
+            estadoVentilador={estadoVentilador}
+          />
         </div>
 
         <div className="bloque">

@@ -1,5 +1,6 @@
 const pestanas = [
   { id: 'tiempo_real', etiqueta: 'tiempo real' },
+  { id: 'viv', etiqueta: 'VIV (visión)' },
   { id: 'usuarios', etiqueta: 'usuarios rfid' },
   { id: 'estadisticas', etiqueta: 'estadisticas y reporte' },
 ]

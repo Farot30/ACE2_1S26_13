@@ -1,0 +1,12 @@
+apiVersion: 1
+
+datasources:
+  - name: Park-Guard-Metrics
+    uid: parkguard-json
+    type: marcusolsson-json-datasource
+    access: proxy
+    url: http://metrics:8080
+    editable: true
+    jsonData:
+      httpMethod: GET
+    version: 2

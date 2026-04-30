@@ -21,10 +21,12 @@ except ImportError:
 
 load_dotenv()
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 # Configuracion minima
 CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
-YOLO_MODEL = os.getenv("YOLO_MODEL", "./Proyecto3/VIV/yolov8n.pt")
+YOLO_MODEL = os.getenv("YOLO_MODEL", os.path.join(BASE_DIR, "yolov8n.pt"))
 YOLO_CONFIDENCE = float(os.getenv("YOLO_CONFIDENCE", "0.25"))
 COOLDOWN_SECONDS = int(os.getenv("DETECTION_COOLDOWN_SECONDS", "3"))
 MAX_FRAMES = int(os.getenv("MAX_FRAMES", "0"))
@@ -112,7 +114,7 @@ def read_plate(reader, frame, box) -> tuple[str, float]:
 
     # Debug: guardar la región de placa para revisar
     try:
-        cv2.imwrite("./Proyecto3/VIV/plate_region.jpg", plate_roi)
+        cv2.imwrite(os.path.join(BASE_DIR, "plate_region.jpg"), plate_roi)
     except Exception:
         pass
 

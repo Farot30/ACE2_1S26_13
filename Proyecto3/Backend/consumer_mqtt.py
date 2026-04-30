@@ -50,7 +50,7 @@ TOPICS_MQTT = {
     'ventilator': 'park-guard/ventilator/command',
     'doors':     'park-guard/doors/+/status',
     'events':    'park-guard/events',
-    "viv":       'park-guard/viv/vehiculos',
+    "viv":       'park-guard/viv/vehicle/type',
 }
 
 COBRO_POR_INGRESO = 1.0
@@ -286,7 +286,7 @@ class ConsumerMQTT:
             source = payload.get('source', 'viv')
             vehicle_type = payload.get('vehicle_type')
             plate_text = payload.get('plate_text')
-            fee_quetzales = payload.get('fee_quetzales', 0.0)
+            fee_quetzales = payload.get('fee_quetzales')
             timestamp = payload.get('timestamp', datetime.utcnow().isoformat())
             
             # Validar datos esenciales
@@ -297,6 +297,13 @@ class ConsumerMQTT:
             if not vehicle_type:
                 logger.warning(f"Tipo de vehículo no definido en payload VIV: {payload}")
                 return
+
+            if fee_quetzales is None:
+                tarifas = {
+                    'car': 10.0,
+                    'motorcycle': 5.0,
+                }
+                fee_quetzales = tarifas.get(vehicle_type, 0.0)
             
             # Convertir timestamp
             try:

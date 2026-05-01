@@ -454,6 +454,30 @@ void procesarComando(String msg) {
       }
     }
   }
+  // Comando para apertura de puertas manualmente (desde Backend)
+  if (msg.indexOf("\"cmd\":\"door\"") >= 0) {
+    bool isEntrance = msg.indexOf("\"door\":\"entrance\"") >= 0;
+    bool isExit = msg.indexOf("\"door\":\"exit\"") >= 0;
+    bool isOpen = msg.indexOf("\"action\":\"open\"") >= 0;
+    
+    // Solo permitimos abrir si la puerta está en estado normal y se solicita "open"
+    if (isOpen && !emergenciaActiva) {
+      if (isEntrance && estadoActual == NORMAL) {
+        // Simulamos la apertura manual de la entrada
+        estadoActual = ABRIENDO_SERVO;
+        tiempoServo = millis();
+        anguloServo = 0;
+        enviarSerial("event", "\"action\":\"manual_entry_opened\"");
+      } 
+      else if (isExit && estadoSalida == SALIDA_NORMAL) {
+        // Simulamos la apertura manual de la salida
+        estadoSalida = SALIDA_ABRIENDO;
+        tiempoSalida = millis();
+        anguloSalida = 90; 
+        enviarSerial("event", "\"action\":\"manual_exit_opened\"");
+      }
+    }
+  }
 }
 
 void activarEmergencia() {

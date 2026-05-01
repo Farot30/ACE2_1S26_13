@@ -39,7 +39,10 @@ MONGO_PASSWORD = os.getenv('MONGO_PASSWORD', 'park_password')
 MONGO_HOST = os.getenv('MONGO_HOST', 'localhost')
 MONGO_PORT = int(os.getenv('MONGO_PORT', 27017))
 MONGO_DB = os.getenv('MONGO_DB', 'park_guard')
-MONGO_URI = f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/{MONGO_DB}?authSource=admin&retryWrites=true&w=majority"
+MONGO_URI = os.getenv(
+    'MONGO_URI',
+    f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/{MONGO_DB}?authSource=admin&retryWrites=true&w=majority"
+)
 
 # Topics MQTT a escuchar
 TOPICS_MQTT = {

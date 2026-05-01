@@ -8,13 +8,17 @@ bp = Blueprint('metrics', __name__, url_prefix='/api/metrics')
 
 def get_db_connection():
     """Obtener conexión a MongoDB"""
+    mongo_uri = os.getenv('MONGO_URI')
     mongo_host = os.getenv('MONGO_HOST', 'localhost')
     mongo_port = int(os.getenv('MONGO_PORT', 27017))
     mongo_user = os.getenv('MONGO_USER', 'park_user')
     mongo_password = os.getenv('MONGO_PASSWORD', 'park_password')
     mongo_db = os.getenv('MONGO_DB', 'park_guard')
-    
-    client = MongoClient(f"mongodb://{mongo_user}:{mongo_password}@{mongo_host}:{mongo_port}/{mongo_db}")
+
+    if mongo_uri:
+        client = MongoClient(mongo_uri)
+    else:
+        client = MongoClient(f"mongodb://{mongo_user}:{mongo_password}@{mongo_host}:{mongo_port}/{mongo_db}")
     return client[ mongo_db]
 
 

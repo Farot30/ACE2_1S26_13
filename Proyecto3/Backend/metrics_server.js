@@ -1,12 +1,12 @@
 const { MongoClient } = require('mongodb');
 
-const mongoHost = process.env.MONGO_HOST || 'mongodb';
+const mongoHost = process.env.MONGO_HOST || 'localhost';
 const mongoPort = process.env.MONGO_PORT || 27017;
 const mongoUser = process.env.MONGO_USER || 'park_user';
 const mongoPassword = process.env.MONGO_PASSWORD || 'park_password';
 const mongoDb = process.env.MONGO_DB || 'park_guard';
 
-const uri = `mongodb://${mongoUser}:${mongoPassword}@${mongoHost}:${mongoPort}/?authSource=admin`;
+const uri = process.env.MONGO_URI || `mongodb://${mongoUser}:${mongoPassword}@${mongoHost}:${mongoPort}/?authSource=admin`;
 
 function buildDailyBuckets(days) {
   const buckets = [];

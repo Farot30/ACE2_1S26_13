@@ -72,6 +72,8 @@ function PaginaPanel() {
   useEffect(() => {
     if (pestanaActiva !== 'viv' || esSesionPrueba()) return
 
+    let urlTemporal = null
+
     const cargarViv = async () => {
       try {
         const respuesta = await solicitarApi('get', '/api/viv/detecciones', undefined, { limit: 30, dias: 7 })
@@ -80,16 +82,29 @@ function PaginaPanel() {
         setDeteccionesViv([])
       }
 
-      const token = localStorage.getItem('token')
-      if (!token) return
-      const base = clienteApi.defaults.baseURL || ''
-      const ts = Date.now()
-      setImagenPlacaUrl(`${base}/api/viv/placa-imagen?ts=${ts}`)
+      try {
+        const respuestaImagen = await clienteApi.get('/api/viv/placa-imagen', {
+          responseType: 'blob',
+        })
+
+        if (urlTemporal) {
+          URL.revokeObjectURL(urlTemporal)
+        }
+        urlTemporal = URL.createObjectURL(respuestaImagen.data)
+        setImagenPlacaUrl(urlTemporal)
+      } catch {
+        setImagenPlacaUrl('')
+      }
     }
 
     cargarViv()
     const intervalo = setInterval(cargarViv, 6000)
-    return () => clearInterval(intervalo)
+    return () => {
+      clearInterval(intervalo)
+      if (urlTemporal) {
+        URL.revokeObjectURL(urlTemporal)
+      }
+    }
   }, [pestanaActiva])
 
   useEffect(() => {
@@ -956,7 +971,9 @@ function PaginaPanel() {
   }
 
   function renderViv() {
-    const eventosVivTiempoReal = eventos.filter((e) => e.event_type === 'viv_detection')
+    const eventosVivTiempoReal = eventos.filter(
+      (e) => e.event_type === 'viv_detection' || e.event_type === 'entrada_viv',
+    )
     const normalizarTipo = (tipo) => {
       if (tipo === 'car') return 'carro'
       if (tipo === 'motorcycle') return 'moto'

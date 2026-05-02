@@ -41,9 +41,13 @@ def obtener_detecciones(usuario_id):
 def obtener_imagen_placa(usuario_id):
     """Retorna la última imagen de región de placa generada por VIV."""
     ruta_raiz = Path(__file__).resolve().parents[3]
-    ruta_imagen = ruta_raiz / 'VIV' / 'plate_region.jpg'
+    posibles_rutas = [
+        ruta_raiz / 'VIV' / 'plate_region.jpg',
+        ruta_raiz / 'VIV' / 'plate_region-jpg',
+    ]
+    ruta_imagen = next((ruta for ruta in posibles_rutas if ruta.exists()), None)
 
-    if not ruta_imagen.exists():
+    if ruta_imagen is None:
         return jsonify({
             'success': False,
             'message': 'imagen de placa no disponible aun'

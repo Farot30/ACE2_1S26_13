@@ -257,6 +257,16 @@ button:active {
   animation: fade-in-up 0.2s ease;
 }
 
+.imagen-placa-viv {
+  width: min(100%, 560px);
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: #0b1220;
+  padding: 8px;
+}
+
 /* ══════════════════════════════════════════════════════
    LOADING SCREEN
 ══════════════════════════════════════════════════════ */

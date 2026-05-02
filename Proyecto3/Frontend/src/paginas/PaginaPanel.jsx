@@ -17,6 +17,7 @@ import { cerrarSesion, esSesionPrueba } from '../servicios/autenticacion'
 import { conectarMqtt, desconectarMqtt } from '../servicios/mqtt'
 import { formatearFecha } from '../utilidades/fechas'
 import { exportarReporte } from '../utilidades/reporte'
+import clienteApi from '../servicios/api'
 
 Grafica.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend)
 
@@ -40,6 +41,8 @@ function PaginaPanel() {
   const [tarjetaNueva, setTarjetaNueva] = useState('')
   const [usuarioParaSaldo, setUsuarioParaSaldo] = useState(null)
   const [montoSaldo, setMontoSaldo] = useState('')
+  const [deteccionesViv, setDeteccionesViv] = useState([])
+  const [imagenPlacaUrl, setImagenPlacaUrl] = useState('')
 
   const nombreAdmin = localStorage.getItem('admin_nombre') || 'admin'
 
@@ -65,6 +68,29 @@ function PaginaPanel() {
   useEffect(() => {
     cargarDatosIniciales()
   }, [])
+
+  useEffect(() => {
+    if (pestanaActiva !== 'viv' || esSesionPrueba()) return
+
+    const cargarViv = async () => {
+      try {
+        const respuesta = await solicitarApi('get', '/api/viv/detecciones', undefined, { limit: 30, dias: 7 })
+        setDeteccionesViv(respuesta.data || [])
+      } catch {
+        setDeteccionesViv([])
+      }
+
+      const token = localStorage.getItem('token')
+      if (!token) return
+      const base = clienteApi.defaults.baseURL || ''
+      const ts = Date.now()
+      setImagenPlacaUrl(`${base}/api/viv/placa-imagen?ts=${ts}`)
+    }
+
+    cargarViv()
+    const intervalo = setInterval(cargarViv, 6000)
+    return () => clearInterval(intervalo)
+  }, [pestanaActiva])
 
   useEffect(() => {
     const clienteMqtt = conectarMqtt()
@@ -930,31 +956,59 @@ function PaginaPanel() {
   }
 
   function renderViv() {
-    const eventosViv = eventos.filter((e) => e.event_type === 'viv_detection')
+    const eventosVivTiempoReal = eventos.filter((e) => e.event_type === 'viv_detection')
+    const normalizarTipo = (tipo) => {
+      if (tipo === 'car') return 'carro'
+      if (tipo === 'motorcycle') return 'moto'
+      return tipo || 'desconocido'
+    }
 
     return (
       <div className="contenido-panel">
         <div className="bloque">
+          <h3>imagen reciente de placa</h3>
+          {imagenPlacaUrl ? (
+            <img
+              className="imagen-placa-viv"
+              src={imagenPlacaUrl}
+              alt="última placa detectada"
+              onError={() => setImagenPlacaUrl('')}
+            />
+          ) : (
+            <p style={{ opacity: 0.7 }}>sin imagen disponible aún, espera una detección VIV.</p>
+          )}
+        </div>
+
+        <div className="bloque">
           <h3>historial de visión por computadora (viv)</h3>
-          <p style={{marginBottom: '1rem', color: '#94a3b8'}}>
-            Registro en vivo de vehículos detectados por el sistema de cámaras.
+          <p style={{ marginBottom: '1rem', color: '#94a3b8' }}>
+            Logs de detecciones con tipo de vehículo (carro/moto), placa y hora.
           </p>
-          
+
           <div className="tabla-simple">
-            {eventosViv.length === 0 && (
-              <p style={{padding: '1rem', opacity: 0.7}}>esperando nuevas detecciones...</p>
+            {deteccionesViv.length === 0 && eventosVivTiempoReal.length === 0 && (
+              <p style={{ padding: '1rem', opacity: 0.7 }}>esperando nuevas detecciones...</p>
             )}
-            
-            {eventosViv.length > 0 && (
+
+            {(deteccionesViv.length > 0 || eventosVivTiempoReal.length > 0) && (
               <div className="fila-tabla" style={{ borderBottom: '1px solid #334155', fontWeight: 'bold' }}>
-                <span>detalles del vehículo</span>
+                <span>vehículo / placa</span>
                 <span>hora de detección</span>
               </div>
             )}
 
-            {eventosViv.map((evento, indice) => (
+            {deteccionesViv.map((evento, indice) => (
               <div key={`${evento.timestamp}-${indice}`} className="fila-tabla">
-                <span style={{color: '#38bdf8', fontWeight: '600'}}>{evento.description || evento.event_type}</span>
+                <span style={{ color: '#38bdf8', fontWeight: '600' }}>
+                  {normalizarTipo(evento.vehicle_type)} - placa {evento.plate_text || 'sin lectura'}
+                </span>
+                <span>{formatearFecha(evento.timestamp)}</span>
+              </div>
+            ))}
+
+            {deteccionesViv.length === 0 && eventosVivTiempoReal.map((evento, indice) => (
+              <div key={`${evento.timestamp}-${indice}`} className="fila-tabla">
+                <span style={{ color: '#38bdf8', fontWeight: '600' }}>{evento.description || evento.event_type}</span>
                 <span>{formatearFecha(evento.timestamp)}</span>
               </div>
             ))}

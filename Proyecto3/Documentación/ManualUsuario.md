@@ -1,11 +1,11 @@
-# Manual de Usuario
-# Park-Guard 2.0
+﻿# Manual de Usuario
+# Park-Guard 3.0
 
 **Curso:** Arquitectura de Computadoras y Ensambladores 2  
 **Ingeniero:** Gabriel Alejandro Diaz Lopez  
 **Auxiliar:** Samuel Isai Muñoz Pereira  
 **Grupo:** 13  
-**Fecha:** 28 Marzo 2026
+**Fecha:** 1 Mayo 2026
 
 ### Integrantes
 
@@ -22,259 +22,150 @@
 
 ## Tabla de Contenidos
 
-1. [Introducción](#introducción)
-2. [Requisitos del Sistema](#requisitos-del-sistema)
-3. [Acceso al Sistema](#acceso-al-sistema)
-4. [Interfaz Principal del Dashboard](#interfaz-principal-del-dashboard)
-5. [Procedimientos de Acceso al Parqueo](#procedimientos-de-acceso-al-parqueo)
-6. [Monitoreo en Tiempo Real](#monitoreo-en-tiempo-real)
-7. [Gestión de Usuarios (Administrador)](#gestión-de-usuarios-administrador)
-8. [Estadísticas y Reportes](#estadísticas-y-reportes)
-9. [Solución de Problemas](#solución-de-problemas)
-10. [Preguntas Frecuentes](#preguntas-frecuentes)
+1. [Introducción y Acceso](#1-introducción-y-acceso)
+2. [Requisitos del Sistema](#2-requisitos-del-sistema)
+3. [Dashboards en Tiempo Real](#3-dashboards-en-tiempo-real)
+4. [Gestión de Usuarios RFID](#4-gestión-de-usuarios-rfid)
+5. [Monitoreo y Acciones Remotas](#5-monitoreo-y-acciones-remotas)
+6. [Dashboard de Grafana](#6-dashboard-de-grafana)
+7. [Operación del Módulo VIV](#7-operación-del-módulo-viv)
+8. [Preguntas Frecuentes (FAQ)](#8-preguntas-frecuentes-faq)
 
 ---
 
-## 1. Introducción
+## 1. Introducción y Acceso
 
-Bienvenido a **Park-Guard 2.0**, una plataforma inteligente de gestión de parqueos. Este manual le guiará a través de todas las funciones disponibles para usuarios, tanto residentes como administradores.
+Bienvenido a **Park-Guard 3.0**, la plataforma IoT y Cloud para gestión inteligente de parqueos. Esta nueva versión integra visión artificial y procesamiento en la nube usando AWS (EC2 y S3) junto con MongoDB Atlas, ofreciendo monitoreo instantáneo mediante el protocolo MQTT y WebSockets.
 
-El sistema funciona de manera simple e intuitiva:
+### Autenticación Segura (Login JWT)
+El acceso al Dashboard Web requiere credenciales válidas. Todo el proceso está asegurado por tokens JWT (JSON Web Tokens) emitidos desde la nube para verificar su identidad continuamente.
 
-1. **Acceso Rápido:** Acerque su tarjeta RFID al sensor
-2. **Validación Automática:** El sistema verifica su identidad
-3. **Control de Acceso:** La barra se abre automáticamente si está autorizado
-4. **Monitoreo:** Vea el estado del parqueo en tiempo real desde cualquier dispositivo
+1. Ingrese a la URL del frontend http://parkguard-grupo13.s3-website.us-east-2.amazonaws.com/panel 
+
+2. Introduzca su **Correo Electrónico** y **Contraseña**.
+3. Haga clic en **INGRESO SEGURO**.
+4. Si las credenciales son válidas, accederá a la pestaña de "Tiempo Real"; de lo contrario, se mostrará un mensaje de error.
+
+![Pantalla de Login](img/login.png) 
 
 ---
 
 ## 2. Requisitos del Sistema
 
-### Para Acceder al Dashboard:
+### Para Acceder al Dashboard Web:
 
-- **Navegador Web:** Chrome, Firefox, Safari o Edge (versiones recientes)
-- **Conexión a Internet:** Conexión estable a la red del parqueo o Internet público
-- **Dispositivo:** Computadora, tablet o smartphone
-- **Credenciales:** Usuario y contraseña proporcionados por el administrador
+- **Navegador Web:** Chrome, Firefox, Safari o Edge (versiones recientes y con soporte para WebSockets).
+- **Conexión a Internet:** Conexión estable a internet para acceder a la aplicación alojada en S3 y comunicarse con el backend en EC2.
+- **Dispositivo:** Computadora, tablet o smartphone.
+- **Credenciales:** Credenciales de usuario autorizadas y almacenadas en la base de datos MongoDB Atlas.
 
-### Para Acceder Físicamente:
+### Para el Acceso Físico en el Parqueo:
 
-- **Tarjeta RFID:** Tarjeta de acceso asignada por el parqueo
-- **Vehículo Registrado:** Debe estar registrado en el sistema
-
----
-
-## 3. Acceso al Sistema
-
-### Paso 1: Abrir el Dashboard
-
-1. Abra su navegador web
-2. Escriba la dirección: `http://localhost:3000` (o la IP proporcionada por el administrador)
-3. Verá la pantalla de login
-
-![Login](img/Login.png)
-
-
-### Paso 2: Ingresar Credenciales
-
-1. Complete el campo **Email** con su correo registrado
-2. Complete el campo **Contraseña** con su contraseña
-3. Haga clic en el botón **INGRESAR**
-
-### Paso 3: Validación
-
-El sistema validará sus credenciales:
-- Credenciales correctas, será redirigido al Dashboard
-- Credenciales incorrectas, verá un mensaje de error
+- **Tarjeta RFID:** Tarjeta RFID asignada y vinculada a un usuario activo.
+- **Vehículo Registrado (VIV):** Para accesos automatizados con cámara, la placa del vehículo debe ser visible y registrada en la base de datos, cuidando de contar con saldo suficiente.
 
 ---
 
-## 4. Interfaz Principal del Dashboard
+## 3. Dashboards en Tiempo Real
 
-Una vez logueado, verá la interfaz principal con los siguientes elementos:
+La interfaz principal ("Tiempo Real") le permite monitorear instantáneamente la ocupación del parqueo y el estado de la maqueta, gracias a comunicaciones bidireccionales vía MQTT/WebSockets.
 
-![Dashboard](img/Dashboard.png)
+![Métricas de Sensores](img/Espacio.png) 
 
-### Elementos del Dashboard:
+### Panel de Ocupación
+Visualice en vivo los espacios del parqueo:
+* **Espacio Ocupado:** Resaltado en color rojo.
+* **Espacio Libre:** Resaltado en color verde.
+* Al acercar o alejar un vehículo a los sensores de la maqueta, el estado en pantalla cambiará en menos de un segundo.
 
-| Elemento | Descripción |
-|----------|-------------|
-| **Barra de Navegación** | Menú principal para acceder a diferentes secciones |
-| **Panel de Bienvenida** | Muestra su nombre y hora de acceso |
-| **Estado del Parqueo** | Espacios libres, nivel de gas y estado del ventilador |
-| **Gráfica de Ocupación** | Visualización en tiempo real de cada espacio |
+### Estado de la Maqueta
+La sección de métricas superiores muestra variables críticas del sistema físico:
 
----
+![Métricas de Sensores1](img/Gas.png) 
 
-## 5. Procedimientos de Acceso al Parqueo
+![Métricas de Sensores](img/Reportes.png) 
 
-### Ingreso de Vehículo
+![Métricas de Sensores](img/Historial.png) 
 
-#### Paso 1: Acercamiento al Sensor RFID
-
-1. Conduzca hasta la entrada del parqueo
-2. Localice el sensor RFID (típicamente en una garita o cabina)
-3. Acerque su tarjeta RFID al sensor a una distancia de **3-5 cm**
-
-![RFID](img/RFID.png)
-
-
-#### Paso 2: Lectura y Validación
-
-El sistema realizará automáticamente:
-- Lectura de su tarjeta RFID
-- Validación de su identidad en la base de datos
-- Verificación de estado de cuenta (pagos al día, autorización vigente)
-
-
-
-#### Paso 3: Apertura de Barrera
-
-Si todo es correcto:
-- La barrera se abre automáticamente
-- La barrera permanece abierta 5 segundos para su paso
-
-#### Paso 4: Acceso Denegado
-
-Si la validación falla, verá:
-- Barrera permanece cerrada
-- Acceso denegado
+| Sensor / Elemento | Descripción / Estados |
+|-------------------|-----------------------|
+| **Niveles de Gas (MQ2)** | Muestra la concentración actual en PPM (Partes por millón). |
+| **Ventilador** | **Activo** / **Inactivo**. Responde a niveles altos de gas o activación remota. |
+| **Barreras (Talanqueras)**| Indica si la entrada o salida está **Abierta** o **Cerrada**. |
+| **Emergencia** | Alerta visual si se ha desencadenado una emergencia. |
 
 ---
 
-## 6. Monitoreo en Tiempo Real
+## 4. Gestión de Usuarios RFID
 
-### Ocupación de Espacios
+El administrador posee control sobre el control de acceso desde la nube. En la pestaña **"Usuarios"**, la validación de RFID ocurre verificando los datos alojados en MongoDB Atlas.
 
-En esta sección podrá:
+![Ventana de Usuarios](img/Usuarios.png) 
 
-1. **Visualización Gráfica:** Ver en tiempo real qué espacios están ocupados y cuáles libres
-
-![Espacios](img/Espacio.png)
-
-
-### Monitoreo de Gas y Ventilación
-
-En el panel superior, verá en tiempo real:
-
-![GAS](img/Gas.png)
+### Administración de Tarjetas
+* **Ver Usuarios:** Presenta un listado completo con Nombre, Tarjeta RFID, Rol, Estado Activo/Inactivo, y su **Saldo actual**.
+* **Agregar y Editar:** Permite asignar una nueva tarjeta RFID a un usuario o modificar su información de contacto.
+* **Recargas / Saldos:** Permite modificar el saldo que utilizan los usuarios para pagar la tarifa automática de ingreso/salida.
+* **Historial RFID:** Visualice el historial de intentos (Aceptados y Denegados) asociados a esa tarjeta específica.
 
 ---
 
-## 7. Gestión de Usuarios
+## 5. Monitoreo y Acciones Remotas
 
-### Acceso a Gestión de Usuarios
+En el área de operaciones del Dashboard, Park-Guard 3.0 le permite enviar comandos al hardware desde cualquier parte del mundo utilizando los tópicos de control MQTT.
 
-Solo usuarios con rol **Administrador** podrán acceder.
+![Panel de Controles Manuales](img/botones.png)
 
-1. Haga clic en **"usuarios rfid"** en la barra de navegación
-
-![Usuarios](img/Usuarios.png)
-
-### Funciones Disponibles:
-
-#### 1. Ver Usuarios Registrados
-
-Verá una tabla con:
-- Nombre del usuario
-- Tarjeta RFID asignada
-- Estado (Activo/Inactivo)
-- Saldo
-- Accesos
-- Opciones para modificar al usuario
-   - Editar
-   - Activar / Desactivar
-   - Saldo
-   - Historial
-   - Eliminar
-
-#### 2. Registrar Nuevo Usuario
-
-Llene los espacios para registrar a un nuevo usuario.
-
-![Registrar](img/Registro.png)
-
-#### 3. Editar Usuario
-
-Haga clic en el botón **"Editar"** junto al usuario
-
-Podrá modificar:
-- Nombre
-- Email
-- Teléfono
-- Estado de cuenta
-
-#### 4. Activar / Desactivar Usuario
-
-Haga clic en el botón **"Activar / Desactivar"** junto al usuario
-
-#### 5. Historial del usuario
-
-Se puede ver la informacion por la cual el usuario tuvo acceso o no tuvo acceso.
-
-![Historial](img/Historial.png)
+* **Activar/Desactivar Ventiladores:** Botones en la interfaz emiten diversos comandos (ej. park-guard/ventilator/command) para encender o apagar la extracción de aire a voluntad.
+* **Alertas de Emergencia:** Puede declarar el estacionamiento en emergencia emitiendo comandos directos. Esto comunicará un estado de máxima alerta tanto en la web como en los componentes físicos del parqueo.
+* **Control de Barreras:** Control vía backend para facilitar operaciones de mantenimiento.
 
 ---
 
-## 8. Estadísticas y Reportes
+## 6. Dashboard de Grafana
 
-### Acceso a Estadísticas
+Grafana centraliza todas las **Métricas e Históricos**. El backend alimenta en tiempo real la información recolectada en MongoDB.
+ 
+![Vista de Grafana1](img/grafana1.png) 
 
-1. Haga clic en la pestaña **"Estadistica y Reporte"** en la barra de navegación
+![Vista de Grafana2](img/grafana2.png) 
 
-### Métricas Disponibles:
+![Vista de Grafana3](img/grafana3.png) 
 
-#### Flujo de Vehículos
-
-- Opupación %
-- Total de ingresos hoy
-- Total de accesos denegados hoy
-- Emergencias hoy
-- Espacio mas usado
-- Activaciones de ventilador
-
-![Reportes](img/Reportes.png)
-
-### Descargar Reportes
-
-Haga clic en el botón **"Descargar PDF"**
-
-El sistema generará un reporte completo con:
-- Resumen ejecutivo con
-- Listado de eventos
-
-![Descarga](img/Descarga.png)
+### Comprensión de las Métricas
+1. **Accesos autorizados/denegados:** Gráficas detallando comprobaciones RFID y VIV exitosas versus accesos rechazados. Podrá detectar incidentes fácilmente.
+2. **Frecuencia de eventos críticos:** Panel observando activaciones y alarmas de niveles altos de gas de manera cronológica.
+3. **Patrones de uso y ocupación histórica:** Gráficas de comportamiento detallando las horas o días más transitados del parqueo.
 
 ---
 
-## 9. Solución de Problemas
+## 7. Operación del Módulo VIV
 
-### Problema: No puedo ingresar al Dashboard
+Park-Guard 3.0 integra un avanzado módulo de **Visión Inteligente Vehicular (VIV)** a través de una cámara para automatizar accesos.
 
-**Posibles causas:**
+![Modulo VIV1](img/moduloVIV1.png)
+![Modulo VIV2](img/moduloVIV2.png)
 
-1. **Credenciales incorrectas**
-   - Verifique que el usuario y contraseña sean correctos
-   - Las contraseñas distinguen mayúsculas de minúsculas
+1. **Detección Automática y Clasificación:** El sistema captura video en vivo y utiliza YOLOv8 para clasificar entre **Carro** o **Motocicleta**.
+2. **Reconocimiento Óptico de Placas (OCR):** Recorta el área inferior de la caja delimitadora del vehículo y extrae el texto (letras y números) correspondiente a la placa usando EasyOCR.
+3. **Validación Autorizada:** Verifica que la matrícula esté dentro de la base de datos (MongoDB).
+4. **Tarifas y Saldos Automáticos:** 
+   * **Carros:** El sistema cobra una tarifa plana configurada (ej. 10.0 unidades).
+   * **Motocicletas:** Se cobra una tarifa reducida (ej. 5.0 unidades).
+   * Si la placa se valida con éxito, notifica al backend vía MQTT (park-guard/viv/vehicle/type) ordenando acceso autorizado y descuenta el saldo.
 
-2. **Sin conexión a Internet**
-   - Verifique su conexión de red
-   - Intente reconectar al WiFi
-   - Contacte al administrador si persiste
+---
 
-3. **Navegador incompatible**
-   - Use Chrome, Firefox, Safari o Edge versiones recientes
-   - Borre la caché del navegador y vuelva a intentar
+## 8. Preguntas Frecuentes (FAQ)
 
-### Problema: La barrera no abre
+**El Panel en Tiempo Real no muestra cambios en los componentes, ¿qué ocurre?**
+* Puede tratarse de una interrupción de **MQTT**. Verifique que la placa (Arduino/Raspberry Pi) esté correctamente conectada al Wi-Fi, el consumer_mqtt backend corriendo, y que los archivos .env (Frontend y Backend) apunten al mismo host/puerto del Broker MQTT en EC2.
 
-**Posibles causas:**
+**¿Por qué el Sistema VIV deniega el acceso a una placa existente?**
+* Existen errores de falso reconocimiento bajo mala iluminación. Evite brillos excesivos en el área del lente, asegúrese de que la cámara capte al auto centrado y limpie su respectiva lente de acercamiento.
 
-1. **Tarjeta no reconocida**
-   - Acerque la tarjeta más al sensor (3-5 cm)
-   - Intente nuevamente en 5 segundos
-   - Verifique que la tarjeta no esté dañada
+**Realizo una "Activación de Emergencia" web, pero el físico no reacciona.**
+* Confirme que el tópico MQTT exacto esté suscrito por su cliente Arduino y que la señal de internet siga abierta en el entorno local del Maker.
 
-2. **Acceso denegado**
-   - Verifique pagos pendientes
-   - Revise si su autorización está vigente
+**Error de inicio de sesión "Acceso Denegado".**
+* Revise que el servicio de backend con MongoDB local o en Atlas se encuentre en línea, para de esta manera recuperar la base de datos y validar el JWT asociado a sus credenciales de manera exitosa.

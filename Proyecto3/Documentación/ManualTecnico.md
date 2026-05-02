@@ -1,12 +1,11 @@
-
-# Manual Tecnico
-# Park-Guard 2.0
+﻿# Manual Técnico
+# Park-Guard 3.0
 
 **Curso:** Arquitectura de Computadoras y Ensambladores 2  
 **Ingeniero:** Gabriel Alejandro Diaz Lopez  
 **Auxiliar:** Samuel Isai Muñoz Pereira  
 **Grupo:** 13  
-**Fecha:** 28 Marzo 2026
+**Fecha:** 1 Mayo 2026
 
 ### Integrantes
 
@@ -22,157 +21,101 @@
 ---
 
 ## Tabla de Contenidos
-
-1. [Introduccion](#introduccion)
-2. [Objetivos](#Objetivos) 
-3. [Alcance del Proyecto](#Alcande-del-Proyecto)
-4. [Arquitectura del Sistema](#arquitectura-del-sistema)
-5. [Documentación de Topics MQTT](#Documentación-de-Topics-MQTT)
-6. [Diseño de Base de sDatos NoSQL](#Diseño-de-Base-de-sDatos-NoSQL)
-7. [Diseño de Dashboard](#Diseño-de-Dashboard)
-8. [Explicación del Flujo Completo](#Explicación-del-Flujo-Completo)
+1. [Arquitectura del Sistema (AWS)](#1-arquitectura-del-sistema-aws)
+2. [Flujo de Comunicación y Protocolos](#2-flujo-de-comunicación-y-protocolos)
+3. [Diseño de la Base de Datos](#3-diseño-de-la-base-de-datos)
+4. [Módulo de Inteligencia Artificial (VIV)](#4-módulo-de-inteligencia-artificial-viv)
+5. [Seguridad y Flujo JWT](#5-seguridad-y-flujo-jwt)
+6. [Despliegue y Monitorización](#6-despliegue-y-monitorización)
+7. [Diagramas Sugeridos](#7-diagramas-sugeridos)
 
 ---
 
-## 1. Introduccion
+## 1. Arquitectura del Sistema (AWS)
+El sistema **Park-Guard 3.0** adopta una arquitectura orientada a eventos y microservicios, desplegada totalmente en infraestructura Cloud (AWS).
 
-El proyecto Park-Guard es un sistema automatizado de gestion de parqueos, es nuestro proyecto del curso Arquitectura de Computadoras y Ensambladores 2. Este manual tecnico presenta la documentacion completa del sistema, incluyendo la descripcion de componentes, arquitectura de software, diagramas de conexion y protocolos de operacion.
+* **Frontend (Amazon S3):** La aplicación cliente desarrollada en React (Vite) se compila en un build estático y se aloja en un bucket de S3 ("Static Website Hosting"). Esto garantiza alta disponibilidad y rápida distribución de los Dashboards Web.
+* **Backend y Broker MQTT (Amazon EC2):** Instancia EC2 que orquesta el Broker Mosquitto (gestión de hardware/IoT) y la API Backend (Python) empaquetados en contenedores Docker. Opera como el principal intermediario de mensajes bidireccionales y expone Endpoints Restful protegidos para el frontend.
+* **Base de Datos (MongoDB Atlas):** El motor NoSQL se delega a un modelo DBaaS (Database as a Service) en MongoDB Atlas. Permite resiliencia, clustering automático georreferenciado, y escalabilidad de datos completamente desacoplada de nuestra capa de cómputo EC2.
 
-El sistema implementa funcionalidades de control de acceso mediante RFID, monitoreo de espacios en tiempo real, control automatizado de talanqueras y un protocolo de emergencia activado por deteccion de gases peligrosos. También se incluye lo que es trabajar con bases de datos que sería con MongoDB, también se incluye lo que Docker, creando imagenes y también consumer, para trabajar de mejor manera y ordenada.
+## 2. Flujo de Comunicación y Protocolos
+La interoperabilidad entre la infraestructura física (Arduino, sensores MQTT) y AWS se desarrolla mediante el protocolo **MQTT** para telemetría de baja latencia. El backend en EC2 consume estos eventos y los retransmite a la web mediante **WebSockets** (Socket.IO) logrando el monitoreo real-time.
 
+### Tópicos MQTT Principales
+| Tópico MQTT | Dirección | Carga Útil (Payload JSON) | Función |
+|-------------|-----------|---------------------------|---------|
+| park-guard/parking/+/status | HW -> Backend | {"space_number": 1, "is_occupied": true, "timestamp": "..."} | Reporta cambios de estado (libre/ocupado) en plazas individuales. |
+| park-guard/gas/sensor | HW -> Backend | {"ppm": 350, "status": "normal"} | Reporte de concentración de gas MQ2 ambiental. |
+| park-guard/ventilator/command| Web -> HW | {"is_active": true, "gas_level": 350} | Comando para encendido/apagado remoto de ventilación industrial. |
+| park-guard/emergency/trigger | HW/Web -> All | {"type": "emergency", "is_active": true} | Alerta general de evacuación para apertura total y notificaciones. |
+| park-guard/rfid/read | HW -> Backend | {"uid": "A1B2C3D4"} | Envío de lectura del tag físico (Tarjeta) para validación de ingresos/cobros en BD. |
+| park-guard/viv/vehicle/type | VIV -> Backend| {"event_type": "viv_vehicle_detected", "source": "viv", "plate": "JNU540"} | Notificación originada por el bloque IA indicando un reconocimiento exitoso OCR+YOLO. |
 
----
+## 3. Diseño de la Base de Datos
+Park-Guard 3.0 emplea **MongoDB Atlas**, cuyo modelo orientado a documentos (BSON) se alinea eficientemente con los Payloads JSON entrantes derivados vía MQTT.
 
-## 2. Objetivos
+* **Colección users:** Almacena perfiles administrativos y residentes. Contiene campos de autenticación (hash/salt) para el panel, saldos activos, tags de tarjetas RFID asignadas y el indicador booleano de operatividad.
+* **Colección events (Logs de Acceso e Historial VIV):** Base temporal robusta que registra la serie de tiempo. Engloba tránsitos vehiculares (aprobaciones / negaciones), activaciones de alarmas automáticas y pagos procesados por OCR VIV o RFID.
+* **Colección parking_spaces:** Controla el estado persistente y meta-información física de las áreas (is_occupied, is_enabled, last_updated). Define el estado de "recuperación" del Dashboard Web en recargas.
+* **Colección suspicious_activity:** Genera un registro de seguridad al detectar múltiples re-intentos de un RFID inválido o anomalías anómalas en módulos de barrera perimetral.
 
-* **Objetivo General:** Desarrrollar un sistema IoT distribuido para la gestión inteligente de parqueos, integrando hardware físico con uan arquitectura orientada a eventos, contenedores Docker y visualización en tiempo real.
+## 4. Módulo de Inteligencia Artificial (VIV)
+El **Visor Inteligente Vehicular (VIV)** orquesta la visión artificial Edge para evitar credenciales físicas. 
 
-* **Objetivos específicos:** 
-    - Implementar una comunicación bidireccional entre el nodo físico y el sistema web mediante el protocolo MQTT.
-    - Gestionar de forma dinámica los usuarios y sus tarjetas RFID desde una base de datos NoSQL, eliminando la validación local en el microcontrolador.
-    - Visualizar el estado del parqueo y eventos operativos en un dashboard interactivo actualizado por WebSockets.
-    - Desplegar todos los servicios de software de forma desacoplada utilizando contenedores Docker y orquestación con Docker Compose.
+1. **Detección y Clasificación Continua (YOLOv8):** 
+   Utiliza modelado ultra-ligero (yolov8n.pt) corriendo ciclo infinito para encontrar exclusivamente instancias vehiculares con alta resolución de confianza, catalogadas como car y motorcycle.
+   `python
+   results = model(frame)
+   # ... itera sobre detections
+   label = model.names[int(box.cls[0])]
+   if label not in ["car", "motorcycle"] or confidence < YOLO_CONFIDENCE:
+       continue
+   `
+2. **Extracción y Reconocimiento (OCR):**
+   Una vez encapsulado el automotor, el software recorta una franja delimitadora inferida (donde idealmente reposa la matrícula), aplica escalado cúbico e invoca a **EasyOCR** con validación estricta alfanumérica.
+   `python
+   plate_roi = frame[plate_y1:plate_y2, plate_x1:plate_x2]
+   results = reader.readtext(plate_roi, allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+   `
+3. **Delegación de Responsabilidad IoT:** 
+   Confirmada la mejor lectura contra ruido fotográfico, el VIV empaqueta una encomienda MQTT (park-guard/viv/vehicle/type). En EC2, el backend buscará coincidencia de placa, deducirá tarifas jerarquizadas (10.0 carros / 5.0 motos) y disparará la orden de barrera (doors/entrance/status) para aperturar.
 
----
+## 5. Seguridad y Flujo JWT
+Las rutas REST del Backend EC2 exigen políticas rigurosas amparadas detrás de tokens **JWT** (JSON Web Token).
+* **Autenticación (Login):** Intercambia credenciales contra users MongoDB. Si el password coincide frente a los hashes bcrypt, firma y emite un token con expiración programada, codificado con un secreto estricto de servidor (JWT_SECRET_KEY).
+* **Protección de Endpoints:** Acciones Crud administrativas (ej. Registrar RFID, abonar saldo) delegan su ingreso a middlewares o decoradores (@token_required). Estas lógicas extraen la cabecera Authorization: Bearer <TOKEN> previniendo de toda manipulación ajena maliciosa en los Endpoints EC2.
 
-## 3. Alcande del Proyecto
+## 6. Despliegue y Monitorización
 
-El sistema abarca desde la detección física de eventos hasta el análisis de datos en la web:
+### Orquestación de Stack en EC2 
+El ambiente backend completo es transportable y empaquetado usando **Docker** y orquestado con docker-compose.yml.
+El clúster virtualiza y lanza simétricamente al host en pocos pasos:
+1. mqtt (Imagen eclipse-mosquitto con mosquitto.conf abierto al 1883 universal).
+2. Backend (FastAPI / Flask / Socket.io) anclado de forma intrínseca a la DB Atlas y puente Broker, instalando 
+equirements.txt.
+3. consumer_mqtt Demonio persistente (CMD ["python", "consumer_mqtt.py"]) dedicado al log de métricas.
 
-* **Control de Acceso:** Validación de tarjetas RFID contra la base de datos y control de talenqueras.
+### Monitorización Analítica con Grafana
+El proyecto anexa un dashboard robusto en **Grafana** (con provisionamiento automatizado vía plugins JSON de marcusolsson). 
+* Utilizando peticiones a los endpoints REST de las métricas que operan Aggregation Pipelines nativos de MongoDB ($match, $group), traduce conteos de accesos VIV/RFID o picos de gas a paneles visuales dinámicos. 
+* Ej: Los query de Tiempos/Series despliegan curvas diurnas visualizando qué sector presenta sobrecupo, y cruces entre *Accesos Exitosos* vs *Denegados* dictaminan la seguridad física del complejo a lo largo de las horas.
 
-* **Monitoreo Ambiental:** Detección de gas/humo y activación automática de ventilzación y alarmas.
+## 7. Diagramas Sugeridos
 
-* **Gestión de Espacios:** Supervisión de ocupación en tiempo real y capacidad de habilitar/deshabilitar espacios desde el frontend.
+A continuación, se presentan los esquemas visuales creados en lenguaje **Graphviz (DOT)** para representar formalmente la infraestructura del proyecto.
 
-* **Seguridad y Auditoria:** Autenticación mediante JWT, registro de logs de eventos y detección de actividad sospechosa (Varios intentos fallidos).
+### 7.1. Diagrama de Arquitectura Global (AWS)
+Representación del despliegue en la nube, separando el Frontend en S3, Backend/Broker en EC2 y Base de Datos en Atlas.
 
-* **Analítica:** Generación de estadísticas de uso y reportes descargables en formato PDF.
+![Arquitectura AWS](img/arquitectura_aws.png)
 
----
+### 7.2. Diagrama Entidad-Relación (NoSQL) de MongoDB
+Estructura de documentos BSON y referencias lógicas.
 
-## 4. Arquitectura del Sistema
-El sistema utiliza una arquitectura distribuida y desacoplada.
-
-**Flujo de la Arquitectura:**
-
-1. **Nodo Físico:** Publica eventos de sensores (RFID, Gas, Ocupación) al Broker MQTT.
-
-2. **Broker MQTT:** Actúa como el centro de mensajería (Mosquitto en Docker).
-
-3. **Consumer (Python):** Se suscribe a los tópicos, procesa la lógica de negocio y clasifica los eventos.
-
-4. **Base de Datos NoSQL:** Almacena de forma persistence usuarios, eventos, logs y estadísticas.
-
-5. **Backend API:** Expone los datos mediante servicios REST protegidos con JWT para el frontend.
-
-6. **Frontend:** Dashboard web que visualiza datos en tiepo real y permite acciones remotras.
-
----
-
-## 5. Documentación de Topics MQTT
-
-| Tópico | Drección (Desde -> hacia) | Formato JSON sugerido | Descripción funcional |
-|--------|---------------------------|-----------------------|-----------------------|
-| parkguard/sensor/rfid | Nodo->Consumer | {"uid": "A1B2C3D4", "timestamp": 1711200000} | Envía el ID de la tarjeta para validación de acceso. |
-| parkguard/sensor/gas | Nodo -> Consumer/Front | {"ppm": 350, "status": "normal"} | Nivel de gas detectado para monitoreo ambiental. |
-| parkguard/actuador/fan | Front -> Nodo | {"command": "ON", "source": "admin"} | Comando remoto para encender el ventilador. |
-| parkguard/status/slots | Nodo -> Front | {"slot_id": 1, "occupied": true} | Estado de ocupación de cada espacio en tiempo real. |
-| parkguard/alerts/emergency | Nodo/Front -> Todo | {"type": "fire", "active": true} | Activación del sistema de emergencia y alarmas. |
-
----
-
-## 6. Diseño de Base de sDatos NoSQL  (Esquemas)
-
-* Usuario RFID: { _id, nombre, tarjeta_uid, estado (activo/inactivo), saldo, fecha_registro }.
-
-* Eventos: { _id, tipo_evento (acceso, salida, denegado), usuario_id, timestamp, detalles }.
-
-* Espacios de Parqueo: { _id, numero, estado_actual (libre/ocupado), habilitado (true/false) }.
-
-* Logs y Estadísticas: Registro de activaciones de ventilador, niveles de dgas históricos y alertas de seguridad.
-
----
-
-## 7. Diseño de Dashboard
-
-* Dashboarde Monitoreo: Representación gráfica con P5.js que muestra la ocupación de los espacios, el estado de las talanqueras y el nivel de gas ambiental.
-
-* Dashboard de Gestión de Usuarios: Interfaz CRUD para registrar tarjetas, editar perfiles y visualizar intentos de acceso sospechosos.
-
-* Dashboard de Estadísticas: Gráficas de flujo vehicular, uso de espacios y botones para descargar reportes en PDF.
-
----
-
-## 8. Explicación del Flujo Completo
-
-1. Detección: Un vehículo llega y el usuario acerca su tarjeta RFID al sensor del Nodo Físico.
-
-2. Publicación: El nodo publica el UID de la tarjeta en el tópico de acceso del Broker.
-
-3. Procesamiento: El Consumer recibe el mensaje, pide validación al Backend, quien consulta la Base de Datos.
-
-4. Acción: Si es válido, el Backend publica un comando de apertura; el nodo recibe el mensaje y abre la talanquera física.
-
-5. Registro y Visualización: El evento se guarda en la base de datos y el Frontend se actualiza automáticamente mostrando el ingreso en vivo.
-
----
-
-## 9. Diagrama de la arquitectura del Sistema
-
-<p align="center">
- <img src="Diagrama.png" widt>
-</p>
+![Estructura MongoDB](img/mongodb_schema.png)
 
 
----
+### 7.3. Diagrama de Secuencia (VIV a Talanquera)
+Flujo de datos desde la captura de imagen hasta la apertura de la barrera.
 
-## Arquitectura de Contenedores
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                   Docker Compose Network                │
-│              (park-guard-network)                       │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  │
-│  │   Frontend   │  │   Backend    │  │  Consumer   │  │
-│  │   (React)    │  │   (Flask)    │  │  (Python)   │  │
-│  │   :3000      │  │   :5000      │  │  sin puerto │  │
-│  └──────────────┘  └──────────────┘  └─────────────┘  │
-│         │                 │                 │          │
-│         └─────────────────┼─────────────────┘          │
-│                           │                            │
-│         ┌─────────────────┼──────────────┐             │
-│         │                 │              │             │
-│    ┌──────────┐    ┌────────────┐        │             │
-│    │ MongoDB  │    │ Mosquitto  │        │             │
-│    │  :27017  │    │:1883/:9001 │        │             │
-│    │ (NoSQL)  │    │  (MQTT)    │        │             │
-│    └──────────┘    └────────────┘        │             │
-│                                          │             │
-│              📁 Volúmenes                │             │
-│         mongodb_data, mosquitto_data,    │             │
-│         mosquitto_logs, ./logs           │             │
-└─────────────────────────────────────────────────────────┘
-```
+![VIV](img/flujoVIV.png)

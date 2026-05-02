@@ -47,19 +47,11 @@ def get_user(user_id, admin_id, email):
 @bp.route('', methods=['POST'])
 @token_required
 def create_user(admin_id, email):
-    """
-    Crear nuevo usuario RFID
-    
-    Body:
-    {
-        "rfid_card": "B91E19B4",
-        "name": "Juan López"
-    }
-    """
+    """Crear nuevo usuario RFID"""
     data = request.get_json()
     
     if not data:
-        return create_error_response("Datos faltantes", 400)
+        return create_error_response("Body vacío", 400)
     
     # Validar esquema
     valid, message = UserCreateSchema.validate(data)
@@ -76,7 +68,7 @@ def create_user(admin_id, email):
         return create_error_response(result, 400)
     
     return create_response(
-        data={'user_id': result},
+        data=result,
         message="Usuario RFID creado exitosamente",
         status_code=201
     )

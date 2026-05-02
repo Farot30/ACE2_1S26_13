@@ -31,12 +31,20 @@ class UserService:
         # Verificar si RFID ya existe
         existing_user = db.users.find_one({'rfid_card': rfid_upper})
         if existing_user:
-            return False, "Esta tarjeta RFID ya está registrada"
+            return False, f"La tarjeta RFID {rfid_upper} ya está registrada"
         
-        user = User.create(rfid_card=rfid_upper, name=name)
+        # Crear el usuario
+        user = User.create(
+            rfid_card=rfid_upper,
+            name=name.strip(),
+            is_active=True
+        )
         
-        result = db.users.insert_one(user)
-        return True, str(result.inserted_id)
+        try:
+            result = db.users.insert_one(user)
+            return True, User.to_dict({**user, '_id': result.inserted_id})
+        except Exception as e:
+            return False, f"Error creando usuario: {str(e)}"
     
     @staticmethod
     def get_user_by_id(user_id):

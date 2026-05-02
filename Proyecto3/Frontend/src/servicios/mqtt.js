@@ -7,7 +7,14 @@ function obtenerUrlMqttPorDefecto() {
     return 'ws://localhost:9001'
   }
   const protocolo = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocolo}//${window.location.hostname}:9001`
+  const { hostname } = window.location
+  
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('172.') || hostname.startsWith('10.')) {
+    return `${protocolo}//${hostname}:9001`
+  }
+  
+  console.warn('⚠️ Ejecutando en entorno de producción/nube sin VITE_MQTT_URL. El broker MQTT no estará en el mismo dominio (ej. S3). Configura el archivo .env antes de hacer "npm run build".')
+  return `${protocolo}//192.168.0.6:9001`
 }
 
 function normalizarTopico(topico = '') {
@@ -142,6 +149,19 @@ function convertirTopicoAEvento(topicoOriginal, payload) {
     }
   }
 
+  // Comandos de acceso (desde Backend/Consumer)
+  if (topico === 'park-guard/commands/access') {
+    return {
+      evento: 'access_update',
+      dato: {
+        granted: Boolean(payload.granted),
+        card_id: payload.card_id,
+        user_name: payload.user_name,
+        timestamp: payload.timestamp,
+      },
+    }
+  }
+
   // Detección VIV (Visión)
   if (topico === 'park-guard/viv/vehicle/type' || topico === 'park-guard/viv/vehiculos') {
     return {
@@ -229,10 +249,12 @@ function crearClienteMqtt() {
           'park-guard/commands/fan',
           'park-guard/commands/emergency',
           'park-guard/commands/door/+',
+          'park-guard/commands/access',
           'park-guard/viv/+',
           '/park-guard/commands/fan',
           '/park-guard/commands/emergency',
           '/park-guard/commands/door/+',
+          '/park-guard/commands/access',
         ]
         topicos.forEach((topico) => {
           cliente.subscribe(topico, { qos: 1 })

@@ -40,7 +40,7 @@ PUERTO_SERIAL = os.environ.get("PUERTO_SERIAL", "/dev/ttyACM0")
 BAUDRATE_SERIAL = obtener_entero("BAUDRATE_SERIAL", 115200)
 
 # IP del broker MQTT
-BROKER_MQTT = os.environ.get("BROKER_MQTT", "192.168.1.100")
+BROKER_MQTT = os.environ.get("BROKER_MQTT", "52.14.176.227")
 PUERTO_MQTT = obtener_entero("PUERTO_MQTT", 1883)
 KEEPALIVE_MQTT = obtener_entero("KEEPALIVE_MQTT", 60)
 
@@ -50,6 +50,7 @@ TOPICO_GAS = "park-guard/gas/sensor"
 TOPICO_RFID = "park-guard/rfid/read"
 TOPICO_EMERGENCIA = "park-guard/emergency/trigger"
 TOPICO_VENTILADOR = "park-guard/ventilator/command"
+TOPICO_EVENTOS = "park-guard/events"
 
 # Topics de comandos publicados por el backend
 TOPICOS_COMANDOS = [
@@ -83,39 +84,49 @@ def publicar_json(cliente, topico, payload):
 def procesar_sensor(payload, cliente, estado):
     marca_tiempo = payload.get("timestamp", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
     espacios = payload.get("spaces", [])
+    ultimo_sensor = estado.setdefault("ultimo_sensor", {})
 
     for indice, valor in enumerate(espacios, start=1):
         ocupado = a_booleano(valor)
-        publicar_json(cliente, TOPICO_PARQUEO.format(space=indice), {
-            "type": "parking",
-            "space": indice,
-            "is_occupied": ocupado,
-            "timestamp": marca_tiempo,
-        })
+        clave = f"space_{indice}"
+        if ultimo_sensor.get(clave) != ocupado:
+            publicar_json(cliente, TOPICO_PARQUEO.format(space=indice), {
+                "type": "parking",
+                "space": indice,
+                "is_occupied": ocupado,
+                "timestamp": marca_tiempo,
+            })
+            ultimo_sensor[clave] = ocupado
 
     gas = payload.get("gas")
     if gas is not None:
-        publicar_json(cliente, TOPICO_GAS, {
-            "type": "gas",
-            "ppm": gas,
-            "timestamp": marca_tiempo,
-        })
+        if ultimo_sensor.get("gas") != gas:
+            publicar_json(cliente, TOPICO_GAS, {
+                "type": "gas",
+                "ppm": gas,
+                "timestamp": marca_tiempo,
+            })
+            ultimo_sensor["gas"] = gas
 
     ventilador = payload.get("fan")
     if ventilador is not None:
-        publicar_json(cliente, TOPICO_VENTILADOR, {
-            "type": "ventilator",
-            "is_active": a_booleano(ventilador),
-            "gas_level": gas,
-            "timestamp": marca_tiempo,
-        })
+        ventilador_activo = a_booleano(ventilador)
+        if ultimo_sensor.get("fan") != ventilador_activo:
+            publicar_json(cliente, TOPICO_VENTILADOR, {
+                "type": "ventilator",
+                "is_active": ventilador_activo,
+                "gas_level": gas,
+                "timestamp": marca_tiempo,
+            })
+            ultimo_sensor["fan"] = ventilador_activo
 
     emergencia = payload.get("emergency")
     if emergencia is not None:
         activa = a_booleano(emergencia)
-        if estado.get("emergencia") != activa and activa:
+        if estado.get("emergencia") != activa:
             publicar_json(cliente, TOPICO_EMERGENCIA, {
                 "type": "emergency",
+                "is_active": activa,
                 "timestamp": marca_tiempo,
             })
         estado["emergencia"] = activa
@@ -134,8 +145,13 @@ def procesar_rfid(payload, cliente):
     })
 
 
-def procesar_evento(payload):
-    print(f"Evento Arduino recibido (sin destino MQTT): {payload}")
+def procesar_evento(payload, cliente):
+    evento = dict(payload)
+    evento["type"] = "event"
+    if "timestamp" not in evento:
+        evento["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    publicar_json(cliente, TOPICO_EVENTOS, evento)
+    print(f"Evento Arduino publicado MQTT: {evento}")
 
 
 def al_conectar(cliente, userdata, flags, rc):
@@ -189,7 +205,8 @@ def al_mensaje(cliente, userdata, msg):
     else:
         mensaje = payload
 
-    conexion_serial.write((json.dumps(mensaje) + "\n").encode("utf-8"))
+    # Arduino parsea por coincidencia de strings; sin espacios evita falsos negativos.
+    conexion_serial.write((json.dumps(mensaje, separators=(",", ":")) + "\n").encode("utf-8"))
     print(f"Comando MQTT recibido {msg.topic}: {mensaje}")
 
 
@@ -226,7 +243,7 @@ def principal():
             elif tipo_mensaje == "rfid":
                 procesar_rfid(payload, cliente_mqtt)
             elif tipo_mensaje == "event":
-                procesar_evento(payload)
+                procesar_evento(payload, cliente_mqtt)
             else:
                 print(f"Tipo desconocido: {payload}")
 

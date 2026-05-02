@@ -391,7 +391,7 @@ class ConsumerMQTT:
     def _procesar_rfid(self, payload):
         """
         Procesar lectura RFID
-        Payload: {"card_id": "ABC123", "timestamp": "..."}
+        Payload: {"type": "rfid", "card_id": "ABC123", "timestamp": "..."}
         """
         card_id = payload.get('card_id')
         timestamp = payload.get('timestamp', datetime.utcnow().isoformat())
@@ -402,7 +402,7 @@ class ConsumerMQTT:
         
         try:
             # 1. BUSCAR USUARIO por tarjeta RFID en la colección 'users'
-            usuario = self.db.users.find_one({'rfid_card': card_id.upper()})
+            usuario = self.db.users.find_one({'rfid_card': card_id})
             
             access_granted = False
             user_name = "Desconocido"

@@ -26,6 +26,8 @@ int tonoActual = 500;
 bool subiendo = true;
 
 bool espacioHabilitado[5] = {true, true, true, true, true};
+bool entradaManual = false;
+bool salidaManual = false;
 
 //CONTROL DE ESTADOS
 enum Estado {
@@ -36,7 +38,8 @@ enum Estado {
   MOSTRANDO_MENSAJE,
   ABRIENDO_SERVO,
   ESPERANDO_ABIERTO,
-  CERRANDO_SERVO
+  CERRANDO_SERVO,
+  ENTRADA_ABIERTA_MANUAL
 };
 
 Estado estadoActual = NORMAL;
@@ -45,7 +48,8 @@ enum EstadoSalida {
   SALIDA_NORMAL,
   SALIDA_ABRIENDO,
   SALIDA_ESPERANDO,
-  SALIDA_CERRANDO
+  SALIDA_CERRANDO,
+  SALIDA_ABIERTA_MANUAL
 };
 
 EstadoSalida estadoSalida = SALIDA_NORMAL;
@@ -277,10 +281,18 @@ if (!emergenciaActiva) {
           anguloServo++;
 
           if(anguloServo >= 90){
-              estadoActual = ESPERANDO_ABIERTO;
-              tiempoEstado = millis();
+              if (entradaManual) {
+                  estadoActual = ENTRADA_ABIERTA_MANUAL;
+              } else {
+                  estadoActual = ESPERANDO_ABIERTO;
+                  tiempoEstado = millis();
+              }
           }
       }
+    break;
+
+    case ENTRADA_ABIERTA_MANUAL:
+      // Esperar comando de cierre
     break;
 
 
@@ -454,27 +466,46 @@ void procesarComando(String msg) {
       }
     }
   }
-  // Comando para apertura de puertas manualmente (desde Backend)
+  //Comando para apertura de puertas manualmente (desde Backend)
   if (msg.indexOf("\"cmd\":\"door\"") >= 0) {
     bool isEntrance = msg.indexOf("\"door\":\"entrance\"") >= 0;
     bool isExit = msg.indexOf("\"door\":\"exit\"") >= 0;
     bool isOpen = msg.indexOf("\"action\":\"open\"") >= 0;
+    bool isClose = msg.indexOf("\"action\":\"close\"") >= 0;
     
-    // Solo permitimos abrir si la puerta está en estado normal y se solicita "open"
-    if (isOpen && !emergenciaActiva) {
-      if (isEntrance && estadoActual == NORMAL) {
-        // Simulamos la apertura manual de la entrada
-        estadoActual = ABRIENDO_SERVO;
-        tiempoServo = millis();
-        anguloServo = 0;
-        enviarSerial("event", "\"action\":\"manual_entry_opened\"");
+    //Solo permitimos operar si no hay emergencia
+    if (!emergenciaActiva) {
+      if (isEntrance) {
+        if (isOpen && estadoActual == NORMAL) {
+          //Apertura manual de la entrada
+          entradaManual = true;
+          estadoActual = ABRIENDO_SERVO;
+          tiempoServo = millis();
+          anguloServo = 0;
+          enviarSerial("event", "\"action\":\"manual_entry_opened\"");
+        } else if (isClose && (estadoActual == ENTRADA_ABIERTA_MANUAL || (estadoActual == ABRIENDO_SERVO && entradaManual))) {
+          //Cierre manual de la entrada
+          entradaManual = false;
+          estadoActual = CERRANDO_SERVO;
+          tiempoServo = millis();
+          enviarSerial("event", "\"action\":\"manual_entry_closed\"");
+        }
       } 
-      else if (isExit && estadoSalida == SALIDA_NORMAL) {
-        // Simulamos la apertura manual de la salida
-        estadoSalida = SALIDA_ABRIENDO;
-        tiempoSalida = millis();
-        anguloSalida = 90; 
-        enviarSerial("event", "\"action\":\"manual_exit_opened\"");
+      else if (isExit) {
+        if (isOpen && estadoSalida == SALIDA_NORMAL) {
+          //Apertura manual de la salida
+          salidaManual = true;
+          estadoSalida = SALIDA_ABRIENDO;
+          tiempoSalida = millis();
+          anguloSalida = 90; 
+          enviarSerial("event", "\"action\":\"manual_exit_opened\"");
+        } else if (isClose && (estadoSalida == SALIDA_ABIERTA_MANUAL || (estadoSalida == SALIDA_ABRIENDO && salidaManual))) {
+          //Cierre manual de la salida
+          salidaManual = false;
+          estadoSalida = SALIDA_CERRANDO;
+          tiempoSalida = millis();
+          enviarSerial("event", "\"action\":\"manual_exit_closed\"");
+        }
       }
     }
   }
@@ -573,6 +604,7 @@ void btnSalida(){
       estadoSalida = SALIDA_ABRIENDO;
       tiempoSalida = millis();
       anguloSalida = 90;
+      salidaManual = false;
       enviarSerial("event", "\"action\":\"exit\"");
     }
   }
@@ -588,10 +620,18 @@ void btnSalida(){
         anguloSalida--;
 
         if (anguloSalida <= 0) {
-          estadoSalida = SALIDA_ESPERANDO;
-          tiempoSalida = millis();
+          if (salidaManual) {
+            estadoSalida = SALIDA_ABIERTA_MANUAL;
+          } else {
+            estadoSalida = SALIDA_ESPERANDO;
+            tiempoSalida = millis();
+          }
         }
       }
+      break;
+
+    case SALIDA_ABIERTA_MANUAL:
+      // Esperar a comando manual de cierre
       break;
 
     case SALIDA_ESPERANDO:

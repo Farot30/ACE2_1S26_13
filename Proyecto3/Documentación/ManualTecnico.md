@@ -66,7 +66,8 @@ El **Visor Inteligente Vehicular (VIV)** orquesta la visión artificial Edge par
    Utiliza modelado ultra-ligero (yolov8n.pt) corriendo ciclo infinito para encontrar exclusivamente instancias vehiculares con alta resolución de confianza, catalogadas como car y motorcycle.
    `python
    results = model(frame)
-   # ... itera sobre detections
+   
+   ## **itera sobre detections**
    label = model.names[int(box.cls[0])]
    if label not in ["car", "motorcycle"] or confidence < YOLO_CONFIDENCE:
        continue

@@ -46,7 +46,7 @@ El acceso al Dashboard Web requiere credenciales válidas. Todo el proceso está
 3. Haga clic en **INGRESO SEGURO**.
 4. Si las credenciales son válidas, accederá a la pestaña de "Tiempo Real"; de lo contrario, se mostrará un mensaje de error.
 
-![Pantalla de Login](img/login.png) 
+![Pantalla de Login](img/Login.png) 
 
 ---
 

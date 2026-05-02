@@ -6,7 +6,18 @@ function obtenerUrlApiPorDefecto() {
     return 'http://localhost:5000'
   }
   const { protocol, hostname } = window.location
-  return `${protocol}//${hostname}:5000`
+  
+  // Si se ejecuta localmente o en red local, el backend suele estar en el mismo servidor
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('172.') || hostname.startsWith('10.')) {
+    return `${protocol}//${hostname}:5000`
+  }
+  
+  // Si se ejecuta en un bucket S3 u otro dominio de producción, DEBE configurarse VITE_API_URL en el archivo .env
+  console.warn('⚠️ Ejecutando en entorno de producción/nube sin VITE_API_URL. El backend no estará en el mismo dominio (ej. S3). Configura el archivo .env antes de hacer "npm run build".')
+  
+  // Fallback que asume que el backend NO está en el mismo host si el frontend es S3
+  // Retornamos la IP de red como fallback temporal, pero fallará si se accede desde fuera de la red local sin VITE_API_URL configurado a la IP pública de EC2.
+  return `http://192.168.0.6:5000`
 }
 
 const clienteApi = axios.create({

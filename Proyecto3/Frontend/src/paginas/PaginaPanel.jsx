@@ -145,6 +145,64 @@ function PaginaPanel() {
           : 'alerta de emergencia desactivada',
         timestamp: dato.timestamp,
       })
+
+      if (activa) {
+        setResumen((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            events: {
+              ...prev.events,
+              emergencies_today: (prev.events?.emergencies_today || 0) + 1
+            }
+          }
+        })
+      }
+    }
+
+    const handleAccessUpdate = (dato) => {
+      const tipo = dato.granted ? 'access_granted' : 'access_denied'
+      insertarEventoEnVivo({
+        event_type: tipo,
+        description: `${dato.granted ? 'acceso concedido' : 'acceso denegado'} a ${dato.user_name || 'desconocido'}`,
+        timestamp: dato.timestamp,
+        data: { rfid_card: dato.card_id }
+      })
+
+      setResumen((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          events: {
+            ...prev.events,
+            access_granted_today: dato.granted 
+              ? (prev.events?.access_granted_today || 0) + 1 
+              : (prev.events?.access_granted_today || 0),
+            access_denied_today: !dato.granted 
+              ? (prev.events?.access_denied_today || 0) + 1 
+              : (prev.events?.access_denied_today || 0)
+          }
+        }
+      })
+    }
+
+    const handleVivDetection = (dato) => {
+      insertarEventoEnVivo({
+        event_type: 'viv_detection',
+        description: `vehículo detectado: ${dato.vehicle_type} (${dato.plate_text})`,
+        timestamp: dato.timestamp,
+        source: 'viv'
+      })
+      setResumen((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          events: {
+            ...prev.events,
+            access_granted_today: (prev.events?.access_granted_today || 0) + 1
+          }
+        }
+      })
     }
 
     const handleSystemStatus = (dato) => {
@@ -159,12 +217,23 @@ function PaginaPanel() {
       })
     }
 
+    const handleRfidRead = (dato) => {
+      if (dato.card_id) {
+        setTarjetaNueva(dato.card_id.toUpperCase())
+        setMensaje(`tarjeta detectada: ${dato.card_id}`)
+        setTimeout(() => setMensaje(''), 3000)
+      }
+    }
+
     clienteMqtt.on('parking_update', handleParkingUpdate)
     clienteMqtt.on('gas_update', handleGasUpdate)
     clienteMqtt.on('ventilator_update', handleVentilatorUpdate)
     clienteMqtt.on('door_update', handleDoorUpdate)
     clienteMqtt.on('emergency_alert', handleEmergencyAlert)
     clienteMqtt.on('system_status', handleSystemStatus)
+    clienteMqtt.on('access_update', handleAccessUpdate)
+    clienteMqtt.on('viv_detection', handleVivDetection)
+    clienteMqtt.on('rfid_read', handleRfidRead)
 
     return () => {
       clienteMqtt.off('parking_update', handleParkingUpdate)
@@ -173,6 +242,9 @@ function PaginaPanel() {
       clienteMqtt.off('door_update', handleDoorUpdate)
       clienteMqtt.off('emergency_alert', handleEmergencyAlert)
       clienteMqtt.off('system_status', handleSystemStatus)
+      clienteMqtt.off('access_update', handleAccessUpdate)
+      clienteMqtt.off('viv_detection', handleVivDetection)
+      clienteMqtt.off('rfid_read', handleRfidRead)
       desconectarMqtt()
     }
   }, [])
@@ -230,15 +302,26 @@ function PaginaPanel() {
     evento.preventDefault()
     setError('')
     try {
+      // Limpiar y formatear los datos antes de enviar
+      const nombreLimpio = nombreNuevo.trim()
+      const rfidLimpio = tarjetaNueva.trim().replace(/\s/g, '').toUpperCase()
+      
+      if (rfidLimpio.length !== 8) {
+        setError('la tarjeta rfid debe tener exactamente 8 caracteres')
+        return
+      }
+
       await solicitarApi('post', '/api/users', {
-        name: nombreNuevo,
-        rfid_card: tarjetaNueva,
+        name: nombreLimpio,
+        rfid_card: rfidLimpio,
       })
       setNombreNuevo('')
       setTarjetaNueva('')
+      setMensaje('usuario creado exitosamente')
       await cargarDatosIniciales()
     } catch (errorPeticion) {
-      setError((errorPeticion?.response?.data?.message || 'no se pudo crear usuario').toLowerCase())
+      const msj = errorPeticion?.response?.data?.message || 'no se pudo crear usuario'
+      setError(msj.toLowerCase())
     }
   }
 
@@ -448,7 +531,9 @@ function PaginaPanel() {
     eventos
       .filter((evento) => evento.event_type === 'access_denied')
       .forEach((evento) => {
-        const tiempo = new Date(evento.timestamp).getTime()
+        // Asegurar que el timestamp se interprete como UTC (agregando 'Z' si no lo tiene)
+        const tsString = evento.timestamp.endsWith('Z') ? evento.timestamp : `${evento.timestamp}Z`
+        const tiempo = new Date(tsString).getTime()
         const tarjeta = evento?.data?.rfid_card || 'sin tarjeta'
         if (tiempo >= limite) {
           contadorPorTarjeta[tarjeta] = (contadorPorTarjeta[tarjeta] || 0) + 1
@@ -800,11 +885,16 @@ function PaginaPanel() {
   function renderEstadisticas() {
     const resumenParqueo = resumen?.parking || {}
     const resumenEventos = resumen?.events || {}
+    
+    // Calcular ocupación en tiempo real basándose en el estado de los espacios
+    const ocupacionReal = conteoEspacios.total > 0 
+      ? Number(((conteoEspacios.ocupados / conteoEspacios.total) * 100).toFixed(1)) 
+      : 0
 
     return (
       <div className="contenido-panel">
         <div className="rejilla-metricas">
-          <TarjetaMetrica titulo="ocupacion %" valor={resumenParqueo.occupancy_percentage ?? 0} estado="normal" />
+          <TarjetaMetrica titulo="ocupacion %" valor={ocupacionReal} estado="normal" />
           <TarjetaMetrica titulo="ingresos hoy" valor={resumenEventos.access_granted_today ?? datosGraficas.ingresos} estado="ok" />
           <TarjetaMetrica titulo="denegados hoy" valor={resumenEventos.access_denied_today ?? datosGraficas.denegados} estado="alerta" />
           <TarjetaMetrica titulo="emergencias hoy" valor={resumenEventos.emergencies_today ?? datosGraficas.emergencias} estado="alerta" />
@@ -839,6 +929,41 @@ function PaginaPanel() {
     )
   }
 
+  function renderViv() {
+    const eventosViv = eventos.filter((e) => e.event_type === 'viv_detection')
+
+    return (
+      <div className="contenido-panel">
+        <div className="bloque">
+          <h3>historial de visión por computadora (viv)</h3>
+          <p style={{marginBottom: '1rem', color: '#94a3b8'}}>
+            Registro en vivo de vehículos detectados por el sistema de cámaras.
+          </p>
+          
+          <div className="tabla-simple">
+            {eventosViv.length === 0 && (
+              <p style={{padding: '1rem', opacity: 0.7}}>esperando nuevas detecciones...</p>
+            )}
+            
+            {eventosViv.length > 0 && (
+              <div className="fila-tabla" style={{ borderBottom: '1px solid #334155', fontWeight: 'bold' }}>
+                <span>detalles del vehículo</span>
+                <span>hora de detección</span>
+              </div>
+            )}
+
+            {eventosViv.map((evento, indice) => (
+              <div key={`${evento.timestamp}-${indice}`} className="fila-tabla">
+                <span style={{color: '#38bdf8', fontWeight: '600'}}>{evento.description || evento.event_type}</span>
+                <span>{formatearFecha(evento.timestamp)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (cargando) {
     return <div className="pantalla-cargando">cargando panel...</div>
   }
@@ -862,6 +987,7 @@ function PaginaPanel() {
       {error && <p className="texto-error">{error}</p>}
 
       {pestanaActiva === 'tiempo_real' && renderTiempoReal()}
+      {pestanaActiva === 'viv' && renderViv()}
       {pestanaActiva === 'usuarios' && renderUsuarios()}
       {pestanaActiva === 'estadisticas' && renderEstadisticas()}
     </div>
